@@ -221,25 +221,70 @@ function render() {
 }
 
 /* ================= Reproductor ================= */
+let playToken = 0;
+let playTimer = null;
+
+// Canales en vivo estilo Xtream (host/usuario/clave/ID[.ts]) -> probar también la versión HLS (.m3u8)
+function candidates(url) {
+  const list = [];
+  const m = url.match(/^(https?:\/\/[^/]+)\/(?:live\/)?([^/?#]+)\/([^/?#]+)\/(\d+)(?:\.(?:ts|m3u8))?(\?.*)?$/i);
+  if (m && !/\/(movie|series)\//i.test(url)) {
+    list.push(`${m[1]}/live/${m[2]}/${m[3]}/${m[4]}.m3u8`);
+    list.push(`${m[1]}/${m[2]}/${m[3]}/${m[4]}.m3u8`);
+  }
+  list.push(url);
+  return [...new Set(list)];
+}
+
 function play(url, name) {
   $('#player').classList.remove('hidden');
   $('#player-title').textContent = name;
-  $('#player-msg').textContent = '';
-  const v = $('#video');
+  $('#player-msg').textContent = 'Cargando…';
   stop();
-  if (/\.m3u8(\?|$)/i.test(url) && window.Hls && Hls.isSupported()) {
+  const token = ++playToken;
+  const list = candidates(url);
+  let i = 0;
+  const next = () => {
+    if (token !== playToken) return;
+    if (i >= list.length) {
+      $('#player-msg').textContent = '⚠️ No se pudo reproducir este canal (puede estar caído o requerir otro formato).';
+      return;
+    }
+    startOne(list[i++], token, next);
+  };
+  next();
+}
+
+function startOne(u, token, onFail) {
+  const v = $('#video');
+  clearTimeout(playTimer);
+  if (hls) { hls.destroy(); hls = null; }
+  v.pause(); v.removeAttribute('src'); v.load();
+
+  const fail = () => { if (token === playToken) { clearTimeout(playTimer); onFail(); } };
+  v.onerror = fail;
+  v.onplaying = () => { clearTimeout(playTimer); $('#player-msg').textContent = ''; };
+  playTimer = setTimeout(fail, 12000); // si no arranca en 12 s, probar el siguiente formato
+
+  const isHls = /\.m3u8(\?|$)/i.test(u);
+  // Android (WebView) reproduce HLS de forma nativa; en Mac/escritorio se usa hls.js
+  const nativeHls = !!window.Capacitor || !!v.canPlayType('application/vnd.apple.mpegurl');
+  if (isHls && !nativeHls && window.Hls && Hls.isSupported()) {
     hls = new Hls();
-    hls.loadSource(url);
+    hls.loadSource(u);
     hls.attachMedia(v);
-    hls.on(Hls.Events.ERROR, (_e, d) => { if (d.fatal) $('#player-msg').textContent = '⚠️ No se pudo reproducir este canal.'; });
+    hls.on(Hls.Events.ERROR, (_e, d) => { if (d.fatal) fail(); });
   } else {
-    v.src = url;
+    v.src = u;
   }
   v.play().catch(() => {});
-  v.onerror = () => { $('#player-msg').textContent = '⚠️ Formato o enlace no compatible.'; };
 }
+
 function stop() {
+  playToken++;
+  clearTimeout(playTimer);
   const v = $('#video');
+  v.onerror = null; v.onplaying = null;
   if (hls) { hls.destroy(); hls = null; }
   v.pause(); v.removeAttribute('src'); v.load();
 }
