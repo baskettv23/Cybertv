@@ -230,6 +230,7 @@ function browse(kind, favOnly) {
 const isAndroid = () => !!(window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'android');
 const PLAYERS = [
   ['auto', 'Automático', 'Elige solo el mejor para cada canal o película.', null],
+  ['exo', 'ExoPlayer', 'Rápido y ligero.', null],
   ['builtin', 'Integrado', 'El reproductor de la app. Rápido y ligero.', null],
   ['vlc', 'VLC', 'Abre casi cualquier formato.', 'org.videolan.vlc'],
   ['mpv', 'mpv', 'Máxima calidad de imagen.', 'is.xyz.mpv'],
@@ -240,6 +241,12 @@ function extPlugin() {
   const C = window.Capacitor;
   if (!C) return null;
   return (C.Plugins && C.Plugins.ExternalPlayer) || (C.registerPlugin && C.registerPlugin('ExternalPlayer')) || null;
+}
+async function playExo(url, name) {
+  const P = extPlugin();
+  if (!P || !P.playExo) { toast('ExoPlayer no está disponible en esta versión. Actualiza el APK.', true); return false; }
+  try { await P.playExo({ urls: candidates(url), title: name || '' }); return true; }
+  catch (e) { toast('No se pudo abrir ExoPlayer: ' + (e.message || e), true); return false; }
 }
 async function playExternal(url, name, pkg) {
   const P = extPlugin();
@@ -519,6 +526,7 @@ function candidates(url) {
 function play(url, name) {
   lastPlay = { url, name };
   const mode = state.player || 'auto';
+  if (isAndroid() && mode === 'exo') { playExo(url, name); return; }
   if (isAndroid() && mode !== 'builtin') {
     const pkg = (PLAYERS.find((x) => x[0] === mode) || [])[3];
     if (pkg !== null && pkg !== undefined) { playExternal(url, name, pkg); return; }

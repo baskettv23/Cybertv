@@ -25,6 +25,13 @@ jobs:
         run: |
           mkdir -p android/app/src/main/java/com/m3u/colorida
           cp android-src/*.java android/app/src/main/java/com/m3u/colorida/
+      - name: Agregar ExoPlayer (Media3) al APK
+        run: |
+          sed -i '0,/^dependencies {/s//dependencies {\n    implementation "androidx.media3:media3-exoplayer:1.3.1"\n    implementation "androidx.media3:media3-exoplayer-hls:1.3.1"\n    implementation "androidx.media3:media3-ui:1.3.1"/' android/app/build.gradle
+          sed -i 's#</application>#    <activity android:name=".PlayerActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" android:theme="@style/AppTheme.NoActionBar" />\n    </application>#' android/app/src/main/AndroidManifest.xml
+          grep -q media3-exoplayer android/app/build.gradle || { echo "No se pudo agregar Media3 a build.gradle"; cat android/app/build.gradle; exit 1; }
+          grep -q PlayerActivity android/app/src/main/AndroidManifest.xml || { echo "No se pudo registrar PlayerActivity"; exit 1; }
+          grep -q 'AppTheme.NoActionBar"' android/app/src/main/res/values/styles.xml || { echo "Falta el tema AppTheme.NoActionBar"; cat android/app/src/main/res/values/styles.xml; exit 1; }
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
