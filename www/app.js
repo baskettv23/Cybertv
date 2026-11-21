@@ -224,15 +224,30 @@ const views = {
   home() {
     const cnt = { live: 0, movie: 0, series: 0 };
     const seriesSet = new Set();
-    state.lists.forEach((l) => l.channels.forEach((c) => { const k = kindOf(c); if (k === 'series') seriesSet.add(seriesTitle(c.name)); else cnt[k]++; }));
+    const pics = { live: [], movie: [], series: [] };
+    const favPics = [];
+    state.lists.forEach((l) => l.channels.forEach((c) => {
+      const k = kindOf(c);
+      if (k === 'series') seriesSet.add(seriesTitle(c.name)); else cnt[k]++;
+      if (c.logo) { pics[k].push(c.logo); if (state.favs.includes(c.url)) favPics.push(c.logo); }
+    }));
     cnt.series = seriesSet.size;
+    // Muestra repartida a lo largo de la lista (cambia cada vez que entras a Inicio)
+    const pick = (arr, n) => {
+      const m = Math.min(n, arr.length), out = [];
+      for (let i = 0; i < m; i++) out.push(arr[Math.floor(((i + Math.random()) * arr.length) / m)]);
+      return out;
+    };
+    const tile = (c1, c2, num, label, imgs, ico, go) => `<div class="stat" style="--c1:${c1};--c2:${c2}" data-act="nav" data-id="${go}">
+      <div class="mosaic">${imgs.map((u) => `<img src="${esc(u)}" loading="lazy" onerror="this.remove()">`).join('')}</div>
+      <div class="shade"></div><span class="bg-ico">${ico}</span><b>${num}</b><span class="lbl">${label}</span></div>`;
     return `<h1>¡Bienvenido! 🎉</h1><p class="muted">Agrega tus listas M3U y míralas en un solo lugar.</p>
     <div class="grid">
-      <div class="stat" style="--c1:#ff4d6d;--c2:#f72585"><b>${state.lists.length}</b>Listas</div>
-      <div class="stat" style="--c1:#06d6a0;--c2:#4cc9f0"><b>${cnt.live}</b>Canales</div>
-      <div class="stat" style="--c1:#ff9e00;--c2:#ff4d6d"><b>${cnt.movie}</b>Películas</div>
-      <div class="stat" style="--c1:#8338ec;--c2:#f72585"><b>${cnt.series}</b>Series</div>
-      <div class="stat" style="--c1:#ffb703;--c2:#fb8500"><b>${state.favs.length}</b>Favoritos</div>
+      ${tile('#ff4d6d', '#f72585', state.lists.length, 'Listas', [...pick(pics.movie, 2), ...pick(pics.series, 2)], '📚', 'lists')}
+      ${tile('#06d6a0', '#4cc9f0', cnt.live, 'Canales', pick(pics.live, 4), '📺', 'channels')}
+      ${tile('#ff9e00', '#ff4d6d', cnt.movie, 'Películas', pick(pics.movie, 4), '🎬', 'movies')}
+      ${tile('#8338ec', '#f72585', cnt.series, 'Series', pick(pics.series, 4), '🍿', 'series')}
+      ${tile('#ffb703', '#fb8500', state.favs.length, 'Favoritos', pick(favPics, 4), '⭐', 'favs')}
     </div>
     <button class="btn pink" data-act="nav" data-id="add">➕ Agregar mi primera lista</button>
     <button class="btn green" data-act="nav" data-id="channels">📺 Ver canales</button>`;

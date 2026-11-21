@@ -132,3 +132,14 @@ video { width: 100%; max-height: 72vh; background: #000; border-radius: 16px; }
 .grid.posters { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 .ch.poster img { width: 100%; height: 190px; object-fit: cover; }
 .ch.poster .ph { width: 100%; height: 190px; line-height: 190px; font-size: 48px; }
+
+/* ===== Cuadros de Inicio con fotos ===== */
+.stat { position: relative; overflow: hidden; isolation: isolate; min-height: 140px; cursor: pointer; transition: transform .15s; }
+.stat:hover { transform: translateY(-4px) scale(1.02); }
+.stat .mosaic { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, 1fr); z-index: 0; }
+.stat .mosaic img { width: 100%; height: 100%; object-fit: cover; }
+.stat .shade { position: absolute; inset: 0; z-index: 0;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c1) 86%, transparent), color-mix(in srgb, var(--c2) 52%, transparent)); }
+.stat .bg-ico { position: absolute; right: 12px; top: 8px; z-index: 1; font-size: 42px; filter: drop-shadow(0 3px 6px rgba(0,0,0,.4)); }
+.stat b, .stat .lbl { position: relative; z-index: 1; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+.stat .lbl { display: block; }
