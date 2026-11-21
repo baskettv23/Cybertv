@@ -53,7 +53,7 @@ function save() {
   return saveChain;
 }
 
-const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120, series: null, dtab: 'rd', dinput: '' };
+const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120, series: null, dtab: 'rd', dinput: '', dfilter: '' };
 let hls = null;
 
 const NAV = [
@@ -166,13 +166,15 @@ function chCard(c) {
     <div class="row">
       <button class="btn green small" data-act="play" data-url="${esc(c.url)}" data-name="${esc(c.name)}">▶</button>
       <button class="btn ${fav ? 'yellow' : 'pink'} small" data-act="fav" data-url="${esc(c.url)}">${fav ? '★' : '☆'}</button>
+      ${k !== 'live' ? `<button class="btn yellow small" title="Buscar en Real-Debrid / TorBox" data-act="deb-find" data-name="${esc(c.name)}">⚡</button>` : ''}
     </div></div>`;
 }
 
 function seriesCard(s) {
   const logo = s.logo ? `<img src="${esc(s.logo)}" loading="lazy" onerror="this.outerHTML='<div class=ph>🍿</div>'">` : '<div class="ph">🍿</div>';
   return `<div class="ch poster">${logo}<div class="n">${esc(s.t)}</div><div class="g">${s.n} episodios</div>
-    <div class="row"><button class="btn green small" data-act="open-series" data-key="${esc(s.t)}">Ver</button></div></div>`;
+    <div class="row"><button class="btn green small" data-act="open-series" data-key="${esc(s.t)}">Ver</button>
+    <button class="btn yellow small" title="Buscar en Real-Debrid / TorBox" data-act="deb-find" data-name="${esc(s.t)}">⚡</button></div></div>`;
 }
 
 function browse(kind, favOnly) {
@@ -297,7 +299,7 @@ const views = {
       const acct = d.err ? `<span style="color:#ff8fa3">⚠️ ${esc(d.err)}</span>`
         : d.loading ? 'Cargando…'
         : `${esc(u.username || u.email || 'Cuenta conectada')}${u.type ? ' · ' + esc(u.type) : ''}${exp ? ' · vence ' + new Date(exp).toLocaleDateString() : ''}`;
-      const rows = d.items.map((x) => {
+      const rows = d.items.filter((x) => !ui.dfilter || dMatch(normItem(svc, x).name, ui.dfilter)).map((x) => {
         const it = normItem(svc, x);
         const files = d.files[it.key];
         const fl = !files ? '' : files.loading ? '<p class="muted">Cargando archivos…</p>'
@@ -314,9 +316,12 @@ const views = {
         <div class="card"><h2>Agregar magnet o enlace</h2>
         <input id="d-in" data-act="dinput" placeholder="magnet:?xt=... o https://..." value="${esc(ui.dinput)}">
         <button class="btn green" data-act="d-add">➕ Agregar</button></div>
-        <h2>Mis descargas</h2>${rows || '<p class="muted card">No hay descargas todavía.</p>'}`;
+        <h2>Mis descargas</h2>${rows || `<p class="muted card">${ui.dfilter ? 'No hay coincidencias en tu cuenta de ' + DN[svc] + '. Solo busco entre lo que ya tienes en ella.' : 'No hay descargas todavía.'}</p>`}`;
     }
-    return `<h1>⚡ Debrid</h1><p class="muted">Conecta tu cuenta de Real-Debrid o TorBox.</p><div class="tabs" style="margin-top:12px">${tabs}</div>${body}`;
+    const banner = ui.dfilter ? `<div class="card">🔎 Buscando: <b>${esc(ui.dfilter)}</b>
+      <div class="muted">Real-Debrid: ${deb().rd ? dCount('rd') : 'no conectado'} · TorBox: ${deb().tb ? dCount('tb') : 'no conectado'}</div>
+      <button class="btn pink small" data-act="d-clear">✕ Quitar filtro</button></div>` : '';
+    return `<h1>⚡ Debrid</h1><p class="muted">Conecta tu cuenta de Real-Debrid o TorBox.</p>${banner}<div class="tabs" style="margin-top:12px">${tabs}</div>${body}`;
   },
 
   settings() {
@@ -437,6 +442,20 @@ function normItem(svc, x) {
     : { key: x._src + '-' + x.id, name: x.name, ready: !!(x.download_finished || x.download_present), pct: Math.round((x.progress || 0) * 100), st: x.download_state, size: x.size };
 }
 
+// Búsqueda dentro de las descargas que YA están en la cuenta del usuario
+const nrm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+const cleanTitle = (n) => String(n)
+  .replace(/[\(\[].*?[\)\]]/g, ' ')
+  .replace(/\b(19|20)\d{2}\b/g, ' ')
+  .replace(/\b(4k|uhd|fhd|hd|sd|1080p?|720p?|2160p?|web-?dl|webrip|bluray|brrip|dual|lat(ino)?|esp|castellano|sub(s|titulado)?|hdr)\b/gi, ' ')
+  .replace(/\s+/g, ' ').trim();
+function dMatch(name, q) {
+  const n = ' ' + nrm(name) + ' ';
+  const w = nrm(q).split(' ').filter((x) => x.length > 1 || /\d/.test(x));
+  return w.length > 0 && w.every((x) => n.includes(' ' + x));
+}
+const dCount = (svc) => dd[svc].items.filter((x) => dMatch(normItem(svc, x).name, ui.dfilter)).length;
+
 async function debridLoad(svc) {
   const t = deb()[svc];
   if (!t) return;
@@ -529,7 +548,7 @@ document.addEventListener('click', async (e) => {
   const name = () => ($('#f-name') ? $('#f-name').value.trim() : '');
 
   try {
-    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 120; ui.series = null; render(); if (id === 'debrid' && deb()[ui.dtab] && !dd[ui.dtab].user) debridLoad(ui.dtab); }
+    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 120; ui.series = null; ui.dfilter = ''; render(); if (id === 'debrid' && deb()[ui.dtab] && !dd[ui.dtab].user) debridLoad(ui.dtab); }
     else if (a === 'dtab') { ui.dtab = id; render(); if (deb()[id] && !dd[id].user) debridLoad(id); }
     else if (a === 'd-connect') {
       const v = ($('#d-token').value || '').trim();
@@ -540,6 +559,16 @@ document.addEventListener('click', async (e) => {
       if (confirm('¿Desconectar ' + DN[ui.dtab] + '?')) { deb()[ui.dtab] = ''; dd[ui.dtab] = { user: null, items: [], files: {} }; save(); render(); }
     }
     else if (a === 'd-refresh') debridLoad(ui.dtab);
+    else if (a === 'd-clear') { ui.dfilter = ''; render(); }
+    else if (a === 'deb-find') {
+      ui.dfilter = cleanTitle(seriesTitle(el.dataset.name)); ui.view = 'debrid'; render();
+      const conn = ['rd', 'tb'].filter((k) => deb()[k]);
+      if (!conn.length) return toast('Primero conecta Real-Debrid o TorBox', true);
+      toast('Buscando en tus cuentas…');
+      await Promise.all(conn.map((k) => debridLoad(k)));
+      ui.dtab = conn.find((k) => dCount(k) > 0) || conn[0];
+      render();
+    }
     else if (a === 'd-add') { toast('Agregando…'); await debridAdd(ui.dtab, $('#d-in').value); }
     else if (a === 'd-open') debridOpen(ui.dtab, el.dataset.key);
     else if (a === 'd-play' || a === 'd-copy') {
