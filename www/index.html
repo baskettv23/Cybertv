@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>M3U Colorida</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <nav id="nav"></nav>
+    <main id="view"></main>
+  </div>
+
+  <div id="player" class="player hidden">
+    <div class="player-box">
+      <div class="player-top">
+        <span id="player-title">—</span>
+        <button class="btn red" data-act="close-player">✕ Cerrar</button>
+      </div>
+      <video id="video" controls autoplay playsinline></video>
+      <p id="player-msg" class="muted"></p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <script src="app.js"></script>
+</body>
+</html>

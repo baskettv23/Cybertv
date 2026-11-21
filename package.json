@@ -1,0 +1,29 @@
+{
+  "name": "m3u-colorida",
+  "productName": "M3U Colorida",
+  "version": "1.0.0",
+  "description": "Gestor colorido de listas M3U para Mac y Android (APK)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac",
+    "cap:add": "cap add android",
+    "cap:sync": "cap sync android",
+    "apk": "cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/cli": "^6.1.0",
+    "@capacitor/core": "^6.1.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.m3u.colorida",
+    "productName": "M3U Colorida",
+    "files": ["main.js", "preload.js", "www/**/*"],
+    "mac": { "category": "public.app-category.video", "target": ["dmg"] }
+  }
+}
