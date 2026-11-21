@@ -53,7 +53,7 @@ function save() {
   return saveChain;
 }
 
-const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120 };
+const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120, series: null };
 let hls = null;
 
 const NAV = [
@@ -61,6 +61,8 @@ const NAV = [
   ['add', '➕ Agregar lista', '#ffb703'],
   ['lists', '📚 Mis listas', '#06d6a0'],
   ['channels', '📺 Canales', '#4cc9f0'],
+  ['movies', '🎬 Películas', '#ff9e00'],
+  ['series', '🍿 Series', '#8338ec'],
   ['favs', '⭐ Favoritos', '#f72585'],
   ['settings', '⚙️ Ajustes', '#b5179e']
 ];
@@ -139,23 +141,97 @@ function allChannels() {
   return lists.flatMap((l) => l.channels);
 }
 
+// Clasifica cada entrada: live (canales), movie (películas) o series
+function kindOf(c) {
+  if (c.k) return c.k;
+  const u = c.url || '';
+  c.k = /\/series\//i.test(u) ? 'series'
+    : /\/movie\//i.test(u) || /\.(mkv|mp4|avi|mov)(\?|$)/i.test(u) ? 'movie'
+    : 'live';
+  return c.k;
+}
+// "Mi Serie S01 E03" -> "Mi Serie"
+function seriesTitle(name) {
+  const t = String(name).replace(/[\s\-–|:]*[SsTt]\d{1,3}\s*[-. ]?\s*[EeCc]\d{1,4}.*$/, '').trim();
+  return t || String(name);
+}
+const ICON = { live: '📺', movie: '🎬', series: '🍿' };
+
 function chCard(c) {
   const fav = state.favs.includes(c.url);
-  const logo = c.logo ? `<img src="${esc(c.logo)}" loading="lazy" onerror="this.outerHTML='<div class=ph>📺</div>'">` : '<div class="ph">📺</div>';
-  return `<div class="ch">${logo}<div class="n">${esc(c.name)}</div><div class="g">${esc(c.group)}</div>
+  const k = kindOf(c), ico = ICON[k];
+  const logo = c.logo ? `<img src="${esc(c.logo)}" loading="lazy" onerror="this.outerHTML='<div class=ph>${ico}</div>'">` : `<div class="ph">${ico}</div>`;
+  return `<div class="ch ${k === 'live' ? '' : 'poster'}">${logo}<div class="n">${esc(c.name)}</div><div class="g">${esc(c.group)}</div>
     <div class="row">
       <button class="btn green small" data-act="play" data-url="${esc(c.url)}" data-name="${esc(c.name)}">▶</button>
       <button class="btn ${fav ? 'yellow' : 'pink'} small" data-act="fav" data-url="${esc(c.url)}">${fav ? '★' : '☆'}</button>
     </div></div>`;
 }
 
+function seriesCard(s) {
+  const logo = s.logo ? `<img src="${esc(s.logo)}" loading="lazy" onerror="this.outerHTML='<div class=ph>🍿</div>'">` : '<div class="ph">🍿</div>';
+  return `<div class="ch poster">${logo}<div class="n">${esc(s.t)}</div><div class="g">${s.n} episodios</div>
+    <div class="row"><button class="btn green small" data-act="open-series" data-key="${esc(s.t)}">Ver</button></div></div>`;
+}
+
+function browse(kind, favOnly) {
+  const titles = { live: '📺 Canales', movie: '🎬 Películas', series: '🍿 Series' };
+  const base = favOnly
+    ? state.lists.flatMap((l) => l.channels).filter((c) => state.favs.includes(c.url))
+    : allChannels().filter((c) => kindOf(c) === kind);
+  const more = (n) => (n > ui.limit ? '<button class="btn yellow" data-act="more">Mostrar más</button>' : '');
+
+  // Detalle de una serie: sus episodios
+  if (kind === 'series' && !favOnly && ui.series) {
+    const eps = base.filter((c) => seriesTitle(c.name) === ui.series)
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    return `<button class="btn pink small" data-act="back-series">← Series</button><h1>🍿 ${esc(ui.series)}</h1>
+      <p class="muted">${eps.length} episodios</p><div class="grid posters">${eps.slice(0, ui.limit).map(chCard).join('')}</div>${more(eps.length)}`;
+  }
+
+  const groups = [...new Set(base.map((c) => c.group).filter(Boolean))].sort();
+  let chs = base;
+  if (ui.group !== 'all') chs = chs.filter((c) => c.group === ui.group);
+  if (ui.q) { const q = ui.q.toLowerCase(); chs = chs.filter((c) => c.name.toLowerCase().includes(q)); }
+
+  let cards, total;
+  if (kind === 'series' && !favOnly) {
+    const map = new Map();
+    for (const c of chs) {
+      const t = seriesTitle(c.name);
+      const s = map.get(t) || { t, logo: c.logo, n: 0 };
+      s.n++; if (!s.logo) s.logo = c.logo;
+      map.set(t, s);
+    }
+    const items = [...map.values()].sort((a, b) => a.t.localeCompare(b.t));
+    total = items.length;
+    cards = items.slice(0, ui.limit).map(seriesCard).join('');
+  } else {
+    total = chs.length;
+    cards = chs.slice(0, ui.limit).map(chCard).join('');
+  }
+
+  const filters = favOnly ? '' : `<div class="filters">
+    <select data-act="sel-list">${'<option value="all">Todas las listas</option>' + state.lists.map((l) => `<option value="${l.id}" ${ui.listId === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select>
+    <select data-act="sel-group"><option value="all">Todos los grupos</option>${groups.map((g) => `<option ${ui.group === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
+    <input id="search" data-act="search" placeholder="🔍 Buscar..." value="${esc(ui.q)}"></div>`;
+  const posters = favOnly || kind !== 'live';
+  return `<h1>${favOnly ? '⭐ Favoritos' : titles[kind]}</h1><p class="muted">${total} ${kind === 'series' && !favOnly ? 'series' : 'resultados'}</p>${filters}
+    <div class="grid${posters ? ' posters' : ''}">${cards || '<p class="muted">Nada por aquí todavía.</p>'}</div>${more(total)}`;
+}
+
 const views = {
   home() {
-    const total = state.lists.reduce((a, l) => a + l.channels.length, 0);
+    const cnt = { live: 0, movie: 0, series: 0 };
+    const seriesSet = new Set();
+    state.lists.forEach((l) => l.channels.forEach((c) => { const k = kindOf(c); if (k === 'series') seriesSet.add(seriesTitle(c.name)); else cnt[k]++; }));
+    cnt.series = seriesSet.size;
     return `<h1>¡Bienvenido! 🎉</h1><p class="muted">Agrega tus listas M3U y míralas en un solo lugar.</p>
     <div class="grid">
       <div class="stat" style="--c1:#ff4d6d;--c2:#f72585"><b>${state.lists.length}</b>Listas</div>
-      <div class="stat" style="--c1:#06d6a0;--c2:#4cc9f0"><b>${total}</b>Canales</div>
+      <div class="stat" style="--c1:#06d6a0;--c2:#4cc9f0"><b>${cnt.live}</b>Canales</div>
+      <div class="stat" style="--c1:#ff9e00;--c2:#ff4d6d"><b>${cnt.movie}</b>Películas</div>
+      <div class="stat" style="--c1:#8338ec;--c2:#f72585"><b>${cnt.series}</b>Series</div>
       <div class="stat" style="--c1:#ffb703;--c2:#fb8500"><b>${state.favs.length}</b>Favoritos</div>
     </div>
     <button class="btn pink" data-act="nav" data-id="add">➕ Agregar mi primera lista</button>
@@ -185,23 +261,10 @@ const views = {
     return `<h1>📚 Mis listas</h1>${rows || '<p class="muted card">Aún no hay listas. Ve a “Agregar lista”.</p>'}`;
   },
 
-  channels(favOnly) {
-    let chs = allChannels();
-    if (favOnly) chs = state.lists.flatMap((l) => l.channels).filter((c) => state.favs.includes(c.url));
-    const groups = [...new Set(chs.map((c) => c.group).filter(Boolean))].sort();
-    if (ui.group !== 'all') chs = chs.filter((c) => c.group === ui.group);
-    if (ui.q) chs = chs.filter((c) => c.name.toLowerCase().includes(ui.q.toLowerCase()));
-    const shown = chs.slice(0, ui.limit);
-    const filters = favOnly ? '' : `<div class="filters">
-      <select data-act="sel-list">${'<option value="all">Todas las listas</option>' + state.lists.map((l) => `<option value="${l.id}" ${ui.listId === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select>
-      <select data-act="sel-group"><option value="all">Todos los grupos</option>${groups.map((g) => `<option ${ui.group === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
-      <input id="search" data-act="search" placeholder="🔍 Buscar canal..." value="${esc(ui.q)}"></div>`;
-    return `<h1>${favOnly ? '⭐ Favoritos' : '📺 Canales'}</h1><p class="muted">${chs.length} resultados</p>${filters}
-      <div class="grid">${shown.map(chCard).join('') || '<p class="muted">Nada por aquí todavía.</p>'}</div>
-      ${chs.length > shown.length ? '<button class="btn yellow" data-act="more">Mostrar más</button>' : ''}`;
-  },
-
-  favs() { return views.channels(true); },
+  channels() { return browse('live'); },
+  movies() { return browse('movie'); },
+  series() { return browse('series'); },
+  favs() { return browse(null, true); },
 
   settings() {
     return `<h1>⚙️ Ajustes</h1><div class="card"><h2>Copia de seguridad</h2>
@@ -297,7 +360,9 @@ document.addEventListener('click', async (e) => {
   const name = () => ($('#f-name') ? $('#f-name').value.trim() : '');
 
   try {
-    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 120; render(); }
+    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 120; ui.series = null; render(); }
+    else if (a === 'open-series') { ui.series = el.dataset.key; ui.limit = 120; render(); }
+    else if (a === 'back-series') { ui.series = null; ui.limit = 120; render(); }
     else if (a === 'addtab') { ui.addTab = id; render(); }
     else if (a === 'add-url') {
       const url = $('#f-url').value.trim();
