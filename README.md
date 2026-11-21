@@ -8,6 +8,12 @@ Gestor colorido de listas M3U para **Mac** (Electron) y **Android** (APK con Cap
 - Búsqueda y filtro por lista y grupo
 - Reproductor integrado (HLS con hls.js)
 - Favoritos, actualizar lista desde su URL, copia de seguridad en JSON
+- **Buscador general** en todas las listas (canales, películas y series)
+- **TMDB**: ficha con póster, sinopsis y puntuación (necesita tu clave gratis de themoviedb.org)
+- **Menú de reproductor** (Ajustes): Automático, Integrado, VLC, mpv, MX Player o Sistema (en Android)
+- Real-Debrid y TorBox: ver y reproducir lo que ya tienes en tus cuentas
+
+*Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.*
 
 ## Correr en Mac
 ```bash

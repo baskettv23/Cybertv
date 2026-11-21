@@ -1,0 +1,13 @@
+package com.m3u.colorida;
+
+import android.os.Bundle;
+
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(ExternalPlayerPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
+}

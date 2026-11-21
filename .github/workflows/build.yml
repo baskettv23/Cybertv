@@ -21,6 +21,10 @@ jobs:
       - run: npx cap add android
       - name: Permitir enlaces http en el APK
         run: grep -q usesCleartextTraffic android/app/src/main/AndroidManifest.xml || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+      - name: Instalar plugin de reproductor externo
+        run: |
+          mkdir -p android/app/src/main/java/com/m3u/colorida
+          cp android-src/*.java android/app/src/main/java/com/m3u/colorida/
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4

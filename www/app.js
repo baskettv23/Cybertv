@@ -53,11 +53,12 @@ function save() {
   return saveChain;
 }
 
-const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120, series: null, dtab: 'rd', dinput: '', dfilter: '' };
+const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120, series: null, dtab: 'rd', dinput: '', dfilter: '', gq: '', gkind: 'all', tmdbRes: [], tmdbFor: '' };
 let hls = null;
 
 const NAV = [
   ['home', '🏠 Inicio', '#ff4d6d'],
+  ['search', '🔎 Buscar', '#00f5d4'],
   ['add', '➕ Agregar lista', '#ffb703'],
   ['lists', '📚 Mis listas', '#06d6a0'],
   ['channels', '📺 Canales', '#4cc9f0'],
@@ -166,7 +167,8 @@ function chCard(c) {
     <div class="row">
       <button class="btn green small" data-act="play" data-url="${esc(c.url)}" data-name="${esc(c.name)}">▶</button>
       <button class="btn ${fav ? 'yellow' : 'pink'} small" data-act="fav" data-url="${esc(c.url)}">${fav ? '★' : '☆'}</button>
-      ${k !== 'live' ? `<button class="btn yellow small" title="Buscar en Real-Debrid / TorBox" data-act="deb-find" data-name="${esc(c.name)}">⚡</button>` : ''}
+      ${k !== 'live' ? `<button class="btn yellow small" title="Buscar en Real-Debrid / TorBox" data-act="deb-find" data-name="${esc(c.name)}">⚡</button>
+      <button class="btn pink small" title="Información (TMDB)" data-act="info" data-name="${esc(c.name)}" data-kind="${k}">ℹ️</button>` : ''}
     </div></div>`;
 }
 
@@ -174,7 +176,8 @@ function seriesCard(s) {
   const logo = s.logo ? `<img src="${esc(s.logo)}" loading="lazy" onerror="this.outerHTML='<div class=ph>🍿</div>'">` : '<div class="ph">🍿</div>';
   return `<div class="ch poster">${logo}<div class="n">${esc(s.t)}</div><div class="g">${s.n} episodios</div>
     <div class="row"><button class="btn green small" data-act="open-series" data-key="${esc(s.t)}">Ver</button>
-    <button class="btn yellow small" title="Buscar en Real-Debrid / TorBox" data-act="deb-find" data-name="${esc(s.t)}">⚡</button></div></div>`;
+    <button class="btn yellow small" title="Buscar en Real-Debrid / TorBox" data-act="deb-find" data-name="${esc(s.t)}">⚡</button>
+    <button class="btn pink small" title="Información (TMDB)" data-act="info" data-name="${esc(s.t)}" data-kind="series">ℹ️</button></div></div>`;
 }
 
 function browse(kind, favOnly) {
@@ -222,6 +225,109 @@ function browse(kind, favOnly) {
   return `<h1>${favOnly ? '⭐ Favoritos' : titles[kind]}</h1><p class="muted">${total} ${kind === 'series' && !favOnly ? 'series' : 'resultados'}</p>${filters}
     <div class="grid${posters ? ' posters' : ''}">${cards || '<p class="muted">Nada por aquí todavía.</p>'}</div>${more(total)}`;
 }
+
+/* ================= Reproductores externos (Android) ================= */
+const isAndroid = () => !!(window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'android');
+const PLAYERS = [
+  ['auto', 'Automático', 'Elige solo el mejor para cada canal o película.', null],
+  ['builtin', 'Integrado', 'El reproductor de la app. Rápido y ligero.', null],
+  ['vlc', 'VLC', 'Abre casi cualquier formato.', 'org.videolan.vlc'],
+  ['mpv', 'mpv', 'Máxima calidad de imagen.', 'is.xyz.mpv'],
+  ['mx', 'MX Player', 'Muy bueno con películas y subtítulos.', 'com.mxtech.videoplayer.ad'],
+  ['system', 'Sistema', 'El reproductor del propio aparato.', '']
+];
+function extPlugin() {
+  const C = window.Capacitor;
+  if (!C) return null;
+  return (C.Plugins && C.Plugins.ExternalPlayer) || (C.registerPlugin && C.registerPlugin('ExternalPlayer')) || null;
+}
+async function playExternal(url, name, pkg) {
+  const P = extPlugin();
+  if (!P) { toast('Reproductor externo no disponible', true); return false; }
+  try { await P.play({ url, title: name || '', pkg: pkg || '', fallback: true }); return true; }
+  catch (e) { toast('No se pudo abrir: ' + (e.message || e), true); return false; }
+}
+let lastPlay = null;
+
+/* ================= TMDB ================= */
+const TMDB = 'https://api.themoviedb.org/3';
+const IMG = 'https://image.tmdb.org/t/p/';
+const tmdbCache = new Map();
+async function tmdb(path, params = {}) {
+  const key = (state.tmdb || '').trim();
+  if (!key) throw new Error('Agrega tu clave de TMDB en Ajustes');
+  const p = new URLSearchParams({ language: 'es-MX', ...params });
+  const opt = { headers: {} };
+  if (/^[a-f0-9]{32}$/i.test(key)) p.set('api_key', key); else opt.headers.Authorization = 'Bearer ' + key;
+  const r = await fetch(`${TMDB}${path}?${p}`, opt);
+  const d = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((d && d.status_message) || 'TMDB HTTP ' + r.status);
+  return d;
+}
+const guessYear = (n) => { const m = String(n).match(/\b(19\d{2}|20\d{2})\b/); return m ? m[1] : ''; };
+async function tmdbFind(name, kind) {
+  const type = kind === 'series' ? 'tv' : 'movie';
+  const title = cleanTitle(kind === 'series' ? seriesTitle(name) : name) || name;
+  const yp = type === 'tv' ? 'first_air_date_year' : 'year';
+  const year = guessYear(name);
+  const params = { query: title };
+  if (year) params[yp] = year;
+  let d = await tmdb('/search/' + type, params);
+  if (!d.results.length && year) { delete params[yp]; d = await tmdb('/search/' + type, params); }
+  return d.results[0] ? { id: d.results[0].id, type } : null;
+}
+function setInfo(html) { const el = $('#info'); el.innerHTML = '<div class="info-box">' + html + '</div>'; el.classList.remove('hidden'); }
+function closeInfo() { $('#info').classList.add('hidden'); }
+function infoHtml(type, d) {
+  const title = d.title || d.name || '';
+  const year = (d.release_date || d.first_air_date || '').slice(0, 4);
+  const rt = type === 'movie' ? (d.runtime ? d.runtime + ' min' : '') : (d.number_of_seasons ? d.number_of_seasons + ' temporadas' : '');
+  const meta = [year, rt, (d.genres || []).map((g) => g.name).join(' · ')].filter(Boolean).join(' · ');
+  const cast = ((d.credits && d.credits.cast) || []).slice(0, 6).map((x) => x.name).join(', ');
+  const poster = d.poster_path ? `<img class="info-poster" src="${IMG}w342${esc(d.poster_path)}">` : '<div class="info-poster ph">🎬</div>';
+  return `<div class="info-top">${poster}<div><h1>${esc(title)}</h1>
+      <p class="muted">${esc(meta)}</p>
+      ${d.vote_average ? `<p class="rate">⭐ ${d.vote_average.toFixed(1)} <span class="muted">(${d.vote_count} votos)</span></p>` : ''}
+      ${d.tagline ? `<p><i>${esc(d.tagline)}</i></p>` : ''}</div></div>
+    <p class="overview">${esc(d.overview || 'Sin sinopsis en español.')}</p>
+    ${cast ? `<p class="muted"><b>Reparto:</b> ${esc(cast)}</p>` : ''}
+    <div class="info-actions">
+      <button class="btn green small" data-act="info-search" data-title="${esc(title)}">🔎 Buscar en mis listas</button>
+      <button class="btn yellow small" data-act="deb-find" data-name="${esc(title)}">⚡ En mis cuentas Debrid</button>
+      <button class="btn red small" data-act="close-info">✕ Cerrar</button></div>
+    <p class="muted tmdb-credit">Datos de TMDB.</p>`;
+}
+async function showTmdb(type, id) {
+  const k = type + ':' + id;
+  setInfo('<p class="muted">Cargando…</p><button class="btn red small" data-act="close-info">✕ Cerrar</button>');
+  try {
+    if (!tmdbCache.has(k)) tmdbCache.set(k, await tmdb(`/${type}/${id}`, { append_to_response: 'credits' }));
+    setInfo(infoHtml(type, tmdbCache.get(k)));
+  } catch (e) {
+    setInfo(`<p>⚠️ ${esc(e.message)}</p><button class="btn red small" data-act="close-info">✕ Cerrar</button>`);
+  }
+}
+async function showInfo(name, kind) {
+  setInfo('<p class="muted">Buscando en TMDB…</p><button class="btn red small" data-act="close-info">✕ Cerrar</button>');
+  try {
+    const f = await tmdbFind(name, kind);
+    if (!f) return setInfo(`<h2>${esc(name)}</h2><p class="muted">No se encontró en TMDB.</p><button class="btn red small" data-act="close-info">✕ Cerrar</button>`);
+    await showTmdb(f.type, f.id);
+  } catch (e) {
+    setInfo(`<p>⚠️ ${esc(e.message)}</p><button class="btn red small" data-act="close-info">✕ Cerrar</button>`);
+  }
+}
+function tmdbCard(r) {
+  const t = r.title || r.name || '';
+  const y = (r.release_date || r.first_air_date || '').slice(0, 4);
+  const img = r.poster_path ? `<img src="${IMG}w185${esc(r.poster_path)}" loading="lazy">` : '<div class="ph">🎬</div>';
+  return `<div class="ch poster">${img}<div class="n">${esc(t)}</div><div class="g">${r.media_type === 'tv' ? 'Serie' : 'Película'}${y ? ' · ' + y : ''}</div>
+    <div class="row"><button class="btn pink small" data-act="tmdb-open" data-type="${r.media_type}" data-id="${r.id}">ℹ️ Ver</button></div></div>`;
+}
+
+/* ================= Buscador general ================= */
+const normCache = new WeakMap();
+const normName = (c) => { let n = normCache.get(c); if (n === undefined) { n = nrm(c.name); normCache.set(c, n); } return n; };
 
 const views = {
   home() {
@@ -324,13 +430,66 @@ const views = {
     return `<h1>⚡ Debrid</h1><p class="muted">Conecta tu cuenta de Real-Debrid o TorBox.</p>${banner}<div class="tabs" style="margin-top:12px">${tabs}</div>${body}`;
   },
 
+  search() {
+    const q = nrm(ui.gq), words = q.split(' ').filter(Boolean);
+    const found = { live: [], movie: [], series: [] };
+    if (q.length >= 2) {
+      for (const l of state.lists) for (const c of l.channels) {
+        const n = normName(c);
+        if (words.every((w) => n.includes(w))) found[kindOf(c)].push(c);
+      }
+    }
+    const sMap = new Map();
+    found.series.forEach((c) => {
+      const t = seriesTitle(c.name);
+      const x = sMap.get(t) || { t, logo: '', n: 0 };
+      x.n++; if (!x.logo) x.logo = c.logo;
+      sMap.set(t, x);
+    });
+    const seriesItems = [...sMap.values()].sort((a, b) => a.t.localeCompare(b.t));
+    const cnt = { live: found.live.length, movie: found.movie.length, series: seriesItems.length };
+    const total = cnt.live + cnt.movie + cnt.series;
+    const chip = (id, label) => `<button class="tab ${ui.gkind === id ? 'active' : ''}" data-act="gkind" data-id="${id}">${label}</button>`;
+    const sec = (title, kind, items, fn, posters) => {
+      if (!items.length || (ui.gkind !== 'all' && ui.gkind !== kind)) return '';
+      const all = ui.gkind === 'all', show = all ? 24 : ui.limit;
+      return `<h2>${title} <span class="muted">${items.length}</span></h2>
+        <div class="grid${posters ? ' posters' : ''}">${items.slice(0, show).map(fn).join('')}</div>
+        ${items.length > show ? (all ? `<button class="btn yellow small" data-act="gkind" data-id="${kind}">Ver todo (${items.length})</button>` : '<button class="btn yellow" data-act="more">Mostrar más</button>') : ''}`;
+    };
+    const tm = ui.tmdbFor === ui.gq && ui.tmdbRes.length
+      ? `<h2>🎞️ Resultados de TMDB</h2><div class="grid posters">${ui.tmdbRes.map(tmdbCard).join('')}</div>` : '';
+    return `<h1>🔎 Buscar</h1><p class="muted">Busca en todas tus listas: canales, películas y series.</p>
+      <input id="search" data-act="gsearch" placeholder="Escribe un título o canal…" value="${esc(ui.gq)}" autocomplete="off">
+      <div class="tabs" style="margin-top:12px">${chip('all', 'Todo (' + total + ')')}${chip('live', '📺 ' + cnt.live)}${chip('movie', '🎬 ' + cnt.movie)}${chip('series', '🍿 ' + cnt.series)}</div>
+      ${q.length >= 2 ? '<button class="btn pink small" data-act="tmdb-search">🎞️ Buscar también en TMDB</button>' : ''}
+      ${q.length < 2 ? '<p class="muted card">Escribe al menos 2 letras.</p>' : total === 0 && !tm ? '<p class="muted card">Sin resultados en tus listas.</p>' : ''}
+      ${sec('📺 Canales', 'live', found.live, chCard, false)}
+      ${sec('🎬 Películas', 'movie', found.movie, chCard, true)}
+      ${sec('🍿 Series', 'series', seriesItems, seriesCard, true)}
+      ${tm}`;
+  },
+
   settings() {
-    return `<h1>⚙️ Ajustes</h1><div class="card"><h2>Copia de seguridad</h2>
-      <button class="btn green" data-act="export">💾 Exportar todo (JSON)</button>
-      <label style="display:block;margin-top:16px">Importar copia</label><input id="f-backup" type="file" accept=".json">
-      <button class="btn yellow" data-act="import">📥 Importar</button></div>
+    const android = isAndroid(), cur = state.player || 'auto';
+    const opts = PLAYERS.filter((x) => android || x[0] === 'auto' || x[0] === 'builtin').map((x) =>
+      `<div class="opt ${cur === x[0] ? 'sel' : ''}" data-act="set-player" data-id="${x[0]}"><span class="radio"></span><div><b>${x[1]}</b><small>${x[2]}</small></div></div>`).join('');
+    return `<h1>⚙️ Configuración</h1>
+      <div class="card"><h2 class="center">Avanzado</h2><p class="muted center">Reproductor de canales y películas.</p>
+        <h2 class="center">Reproductor</h2>${opts}
+        <p class="muted" style="margin-top:12px">${android
+          ? 'VLC, mpv y MX Player se abren como apps aparte: instálalos desde Play Store. Si no está instalado, se abre el selector del sistema.'
+          : 'En la app de Android también puedes elegir VLC, mpv o MX Player.'}</p></div>
+      <div class="card"><h2>🎞️ TMDB (información de películas y series)</h2>
+        <p class="muted">Clave gratis en themoviedb.org → Ajustes → API. Acepta la clave v3 o el token v4. Se guarda solo en este dispositivo.</p>
+        <input id="tmdb-key" type="password" placeholder="Pega tu clave de TMDB" autocomplete="off" value="${esc(state.tmdb || '')}">
+        <button class="btn green" data-act="tmdb-save">💾 Guardar y probar</button></div>
+      <div class="card"><h2>Copia de seguridad</h2>
+        <button class="btn green" data-act="export">💾 Exportar todo (JSON)</button>
+        <label style="display:block;margin-top:16px">Importar copia</label><input id="f-backup" type="file" accept=".json">
+        <button class="btn yellow" data-act="import">📥 Importar</button></div>
       <div class="card"><h2>Zona peligrosa</h2><button class="btn pink" data-act="wipe">🗑️ Borrar todo</button></div>
-      <p class="muted" style="margin-top:20px">M3U Colorida v1.0 · Solo gestiona y reproduce listas que tú agregas.</p>`;
+      <p class="muted" style="margin-top:20px">M3U Colorida v1.1 · Solo gestiona y reproduce listas que tú agregas.<br>Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.</p>`;
   }
 };
 
@@ -358,6 +517,14 @@ function candidates(url) {
 }
 
 function play(url, name) {
+  lastPlay = { url, name };
+  const mode = state.player || 'auto';
+  if (isAndroid() && mode !== 'builtin') {
+    const pkg = (PLAYERS.find((x) => x[0] === mode) || [])[3];
+    if (pkg !== null && pkg !== undefined) { playExternal(url, name, pkg); return; }
+    // Automático: contenedores que el WebView no abre -> VLC (o selector del sistema)
+    if (/\.(mkv|avi|wmv|flv|mov)(\?|$)/i.test(url)) { playExternal(url, name, 'org.videolan.vlc'); return; }
+  }
   $('#player').classList.remove('hidden');
   $('#player-title').textContent = name;
   $('#player-msg').textContent = 'Cargando…';
@@ -368,7 +535,8 @@ function play(url, name) {
   const next = () => {
     if (token !== playToken) return;
     if (i >= list.length) {
-      $('#player-msg').textContent = '⚠️ No se pudo reproducir este canal (puede estar caído o requerir otro formato).';
+      $('#player-msg').innerHTML = '⚠️ No se pudo reproducir aquí (puede estar caído o requerir otro formato).' +
+        (isAndroid() ? ' <button class="btn yellow small" data-act="play-ext">📲 Abrir en otro reproductor</button>' : '');
       return;
     }
     startOne(list[i++], token, next);
@@ -542,13 +710,14 @@ async function debridAdd(svc, text) {
 
 /* ================= Eventos ================= */
 document.addEventListener('click', async (e) => {
+  if (e.target.id === 'info') return closeInfo();
   const el = e.target.closest('[data-act]');
   if (!el || el.tagName === 'SELECT' || el.tagName === 'INPUT') return;
   const a = el.dataset.act, id = el.dataset.id;
   const name = () => ($('#f-name') ? $('#f-name').value.trim() : '');
 
   try {
-    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 120; ui.series = null; ui.dfilter = ''; render(); if (id === 'debrid' && deb()[ui.dtab] && !dd[ui.dtab].user) debridLoad(ui.dtab); }
+    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 120; ui.series = null; ui.dfilter = ''; render(); if (id === 'search') { const f = $('#search'); if (f) f.focus(); } if (id === 'debrid' && deb()[ui.dtab] && !dd[ui.dtab].user) debridLoad(ui.dtab); }
     else if (a === 'dtab') { ui.dtab = id; render(); if (deb()[id] && !dd[id].user) debridLoad(id); }
     else if (a === 'd-connect') {
       const v = ($('#d-token').value || '').trim();
@@ -561,7 +730,7 @@ document.addEventListener('click', async (e) => {
     else if (a === 'd-refresh') debridLoad(ui.dtab);
     else if (a === 'd-clear') { ui.dfilter = ''; render(); }
     else if (a === 'deb-find') {
-      ui.dfilter = cleanTitle(seriesTitle(el.dataset.name)); ui.view = 'debrid'; render();
+      closeInfo(); ui.dfilter = cleanTitle(seriesTitle(el.dataset.name)); ui.view = 'debrid'; render();
       const conn = ['rd', 'tb'].filter((k) => deb()[k]);
       if (!conn.length) return toast('Primero conecta Real-Debrid o TorBox', true);
       toast('Buscando en tus cuentas…');
@@ -579,7 +748,34 @@ document.addEventListener('click', async (e) => {
       if (a === 'd-play') play(url, dd[ui.dtab].files[key].list[i].name);
       else { await navigator.clipboard.writeText(url); toast('🔗 Enlace copiado'); }
     }
-    else if (a === 'open-series') { ui.series = el.dataset.key; ui.limit = 120; render(); }
+    else if (a === 'gkind') { ui.gkind = id; ui.limit = 120; render(); }
+    else if (a === 'info') showInfo(el.dataset.name, el.dataset.kind);
+    else if (a === 'tmdb-open') showTmdb(el.dataset.type, el.dataset.id);
+    else if (a === 'close-info') closeInfo();
+    else if (a === 'info-search') { closeInfo(); ui.gq = el.dataset.title; ui.gkind = 'all'; ui.limit = 120; ui.view = 'search'; render(); }
+    else if (a === 'tmdb-search') {
+      toast('Buscando en TMDB…');
+      const d = await tmdb('/search/multi', { query: ui.gq });
+      ui.tmdbRes = (d.results || []).filter((r) => r.media_type === 'movie' || r.media_type === 'tv').slice(0, 12);
+      ui.tmdbFor = ui.gq;
+      if (!ui.tmdbRes.length) toast('Sin resultados en TMDB', true);
+      render();
+    }
+    else if (a === 'tmdb-save') {
+      state.tmdb = ($('#tmdb-key').value || '').trim(); save();
+      if (!state.tmdb) { toast('Clave borrada'); return render(); }
+      tmdbCache.clear();
+      await tmdb('/configuration');
+      toast('✅ TMDB conectado');
+    }
+    else if (a === 'set-player') { state.player = id; save(); render(); }
+    else if (a === 'play-ext') {
+      if (!lastPlay) return;
+      const pkg = (PLAYERS.find((x) => x[0] === (state.player || 'auto')) || [])[3];
+      stop(); $('#player').classList.add('hidden');
+      playExternal(lastPlay.url, lastPlay.name, pkg || 'org.videolan.vlc');
+    }
+    else if (a === 'open-series') { ui.series = el.dataset.key; ui.view = 'series'; ui.q = ''; ui.group = 'all'; ui.limit = 120; render(); }
     else if (a === 'back-series') { ui.series = null; ui.limit = 120; render(); }
     else if (a === 'addtab') { ui.addTab = id; render(); }
     else if (a === 'add-url') {
@@ -627,10 +823,10 @@ document.addEventListener('click', async (e) => {
       if (!f) return toast('Elige un archivo .json', true);
       const d = JSON.parse(await f.text());
       if (!Array.isArray(d.lists)) throw new Error('Archivo inválido');
-      state = { lists: d.lists, favs: d.favs || [], debrid: deb() }; save(); toast('Importado ✅'); render();
+      state = { lists: d.lists, favs: d.favs || [], debrid: deb(), player: state.player, tmdb: state.tmdb }; save(); toast('Importado ✅'); render();
     }
     else if (a === 'wipe') {
-      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state = { lists: [], favs: [], debrid: { rd: '', tb: '' } }; dd.rd = { user: null, items: [], files: {} }; dd.tb = { user: null, items: [], files: {} }; save(); render(); }
+      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state = { lists: [], favs: [], debrid: { rd: '', tb: '' }, player: state.player }; dd.rd = { user: null, items: [], files: {} }; dd.tb = { user: null, items: [], files: {} }; save(); render(); }
     }
   } catch (err) {
     toast('Error: ' + (err.message || err), true);
@@ -642,8 +838,10 @@ document.addEventListener('change', (e) => {
   if (a === 'sel-list') { ui.listId = e.target.value; ui.group = 'all'; render(); }
   if (a === 'sel-group') { ui.group = e.target.value; render(); }
 });
+const input = {};
 document.addEventListener('input', (e) => {
   if (e.target.dataset.act === 'dinput') ui.dinput = e.target.value;
+  if (e.target.dataset.act === 'gsearch') { ui.gq = e.target.value; ui.limit = 120; clearTimeout(input.t); input.t = setTimeout(render, 250); }
   if (e.target.dataset.act === 'search') { ui.q = e.target.value; ui.limit = 120; render(); }
 });
 
