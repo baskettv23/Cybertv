@@ -53,7 +53,7 @@ function save() {
   return saveChain;
 }
 
-const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120, series: null };
+const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120, series: null, dtab: 'rd', dinput: '' };
 let hls = null;
 
 const NAV = [
@@ -63,6 +63,7 @@ const NAV = [
   ['channels', '📺 Canales', '#4cc9f0'],
   ['movies', '🎬 Películas', '#ff9e00'],
   ['series', '🍿 Series', '#8338ec'],
+  ['debrid', '⚡ Debrid', '#ffd60a'],
   ['favs', '⭐ Favoritos', '#f72585'],
   ['settings', '⚙️ Ajustes', '#b5179e']
 ];
@@ -281,6 +282,43 @@ const views = {
   series() { return browse('series'); },
   favs() { return browse(null, true); },
 
+  debrid() {
+    const svc = ui.dtab, t = deb()[svc], d = dd[svc];
+    const tabs = ['rd', 'tb'].map((k) => `<button class="tab ${svc === k ? 'active' : ''}" data-act="dtab" data-id="${k}">${DN[k]}${deb()[k] ? ' ✓' : ''}</button>`).join('');
+    const hint = svc === 'rd' ? 'Tu token está en real-debrid.com/apitoken' : 'Tu API token está en torbox.app → Settings';
+    let body;
+    if (!t) {
+      body = `<div class="card"><h2>Conectar ${DN[svc]}</h2><p class="muted">${hint}. Se guarda solo en este dispositivo.</p>
+        <input id="d-token" type="password" placeholder="Pega tu token aquí" autocomplete="off">
+        <button class="btn green" data-act="d-connect">🔌 Conectar</button></div>`;
+    } else {
+      const u = d.user || {};
+      const exp = u.expiration || u.premium_expires_at;
+      const acct = d.err ? `<span style="color:#ff8fa3">⚠️ ${esc(d.err)}</span>`
+        : d.loading ? 'Cargando…'
+        : `${esc(u.username || u.email || 'Cuenta conectada')}${u.type ? ' · ' + esc(u.type) : ''}${exp ? ' · vence ' + new Date(exp).toLocaleDateString() : ''}`;
+      const rows = d.items.map((x) => {
+        const it = normItem(svc, x);
+        const files = d.files[it.key];
+        const fl = !files ? '' : files.loading ? '<p class="muted">Cargando archivos…</p>'
+          : `<div class="card" style="margin-top:6px">${files.list.map((f, i) => `<div class="list-row"><div><div class="t">${esc(f.name)}</div><div class="muted">${fmtSize(f.size)}</div></div><div>
+              ${isVideo(f.name) ? `<button class="btn green small" data-act="d-play" data-key="${esc(it.key)}" data-i="${i}">▶</button>` : ''}
+              <button class="btn yellow small" data-act="d-copy" data-key="${esc(it.key)}" data-i="${i}">🔗 Copiar</button></div></div>`).join('') || '<p class="muted">Sin archivos.</p>'}</div>`;
+        return `<div class="list-row"><div><div class="t">${esc(it.name)}</div>
+          <div class="muted">${esc(it.st || '')}${it.ready ? '' : ' · ' + it.pct + '%'} ${fmtSize(it.size)}</div></div>
+          <div>${it.ready ? `<button class="btn green small" data-act="d-open" data-key="${esc(it.key)}">📂 Archivos</button>` : '<span class="muted">En proceso…</span>'}</div></div>${fl}`;
+      }).join('');
+      body = `<div class="card"><div class="muted">${acct}</div>
+        <button class="btn yellow small" data-act="d-refresh">🔄 Actualizar</button>
+        <button class="btn pink small" data-act="d-disconnect">Desconectar</button></div>
+        <div class="card"><h2>Agregar magnet o enlace</h2>
+        <input id="d-in" data-act="dinput" placeholder="magnet:?xt=... o https://..." value="${esc(ui.dinput)}">
+        <button class="btn green" data-act="d-add">➕ Agregar</button></div>
+        <h2>Mis descargas</h2>${rows || '<p class="muted card">No hay descargas todavía.</p>'}`;
+    }
+    return `<h1>⚡ Debrid</h1><p class="muted">Conecta tu cuenta de Real-Debrid o TorBox.</p><div class="tabs" style="margin-top:12px">${tabs}</div>${body}`;
+  },
+
   settings() {
     return `<h1>⚙️ Ajustes</h1><div class="card"><h2>Copia de seguridad</h2>
       <button class="btn green" data-act="export">💾 Exportar todo (JSON)</button>
@@ -367,6 +405,122 @@ function stop() {
   v.pause(); v.removeAttribute('src'); v.load();
 }
 
+/* ================= Debrid (Real-Debrid / TorBox) ================= */
+const deb = () => (state.debrid = state.debrid || { rd: '', tb: '' });
+const DN = { rd: 'Real-Debrid', tb: 'TorBox' };
+const RDAPI = 'https://api.real-debrid.com/rest/1.0';
+const TBAPI = 'https://api.torbox.app/v1/api';
+const dd = { rd: { user: null, items: [], files: {} }, tb: { user: null, items: [], files: {} } };
+const fmtSize = (b) => (!b ? '' : b > 1e9 ? (b / 1e9).toFixed(2) + ' GB' : (b / 1e6).toFixed(0) + ' MB');
+const isVideo = (n) => /\.(mp4|mkv|avi|mov|m4v|webm|ts)$/i.test(n || '');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function dReq(method, url, token, params) {
+  const opt = { method, headers: { Authorization: 'Bearer ' + token } };
+  if (params) {
+    opt.body = new URLSearchParams(params).toString();
+    opt.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  }
+  const r = await fetch(url, opt);
+  const txt = await r.text();
+  let data = null;
+  try { data = txt ? JSON.parse(txt) : null; } catch (e) {}
+  if (!r.ok || (data && data.success === false)) {
+    throw new Error((data && (data.error_description || data.error || data.detail || data.message)) || 'HTTP ' + r.status);
+  }
+  return data;
+}
+
+function normItem(svc, x) {
+  return svc === 'rd'
+    ? { key: String(x.id), name: x.filename, ready: x.status === 'downloaded', pct: Math.round(x.progress || 0), st: x.status, size: x.bytes }
+    : { key: x._src + '-' + x.id, name: x.name, ready: !!(x.download_finished || x.download_present), pct: Math.round((x.progress || 0) * 100), st: x.download_state, size: x.size };
+}
+
+async function debridLoad(svc) {
+  const t = deb()[svc];
+  if (!t) return;
+  const d = dd[svc];
+  d.loading = true; d.err = ''; render();
+  try {
+    if (svc === 'rd') {
+      d.user = await dReq('GET', RDAPI + '/user', t);
+      d.items = (await dReq('GET', RDAPI + '/torrents?limit=50', t)) || [];
+    } else {
+      d.user = ((await dReq('GET', TBAPI + '/user/me', t)) || {}).data || {};
+      const [a, b] = await Promise.all([
+        dReq('GET', TBAPI + '/torrents/mylist', t),
+        dReq('GET', TBAPI + '/webdl/mylist', t).catch(() => ({ data: [] }))
+      ]);
+      d.items = [...((a && a.data) || []).map((x) => ({ ...x, _src: 'torrents' })), ...((b && b.data) || []).map((x) => ({ ...x, _src: 'webdl' }))];
+    }
+  } catch (e) { d.err = e.message; d.user = null; }
+  d.loading = false; render();
+}
+
+async function debridOpen(svc, key) {
+  const d = dd[svc], t = deb()[svc];
+  if (d.files[key]) { delete d.files[key]; return render(); }
+  d.files[key] = { loading: true }; render();
+  try {
+    let list = [];
+    if (svc === 'rd') {
+      const info = await dReq('GET', RDAPI + '/torrents/info/' + key, t);
+      const sel = (info.files || []).filter((f) => f.selected === 1);
+      const links = info.links || [];
+      list = links.map((l, i) => ({
+        link: l,
+        name: sel.length === links.length ? String(sel[i].path).replace(/^\//, '') : 'Archivo ' + (i + 1),
+        size: sel.length === links.length ? sel[i].bytes : 0
+      }));
+    } else {
+      const it = d.items.find((x) => x._src + '-' + x.id === key);
+      list = ((it && it.files) || []).slice(0, 200).map((f) => ({ id: f.id, name: f.short_name || f.name, size: f.size, src: it._src, parent: it.id }));
+    }
+    d.files[key] = { list };
+  } catch (e) { delete d.files[key]; toast('Error: ' + e.message, true); }
+  render();
+}
+
+async function debridUrl(svc, key, i) {
+  const f = dd[svc].files[key].list[i], t = deb()[svc];
+  if (svc === 'rd') return (await dReq('POST', RDAPI + '/unrestrict/link', t, { link: f.link })).download;
+  const idp = f.src === 'torrents' ? 'torrent_id' : 'web_id';
+  const r = await dReq('GET', `${TBAPI}/${f.src}/requestdl?token=${encodeURIComponent(t)}&${idp}=${f.parent}&file_id=${f.id}`, t);
+  return r.data;
+}
+
+async function debridAdd(svc, text) {
+  const t = deb()[svc];
+  text = (text || '').trim();
+  if (!text) return toast('Pega un magnet o un enlace', true);
+  const magnet = /^magnet:/i.test(text);
+  if (svc === 'rd') {
+    if (magnet) {
+      const r = await dReq('POST', RDAPI + '/torrents/addMagnet', t, { magnet: text });
+      for (let i = 0; i < 10; i++) { // esperar a que Real-Debrid lea el magnet
+        const info = await dReq('GET', RDAPI + '/torrents/info/' + r.id, t);
+        if (info.status !== 'magnet_conversion') {
+          if (info.status === 'waiting_files_selection') await dReq('POST', RDAPI + '/torrents/selectFiles/' + r.id, t, { files: 'all' });
+          break;
+        }
+        await sleep(1000);
+      }
+    } else {
+      const u = await dReq('POST', RDAPI + '/unrestrict/link', t, { link: text });
+      play(u.download, u.filename);
+      return;
+    }
+  } else if (magnet) {
+    await dReq('POST', TBAPI + '/torrents/createtorrent', t, { magnet: text });
+  } else {
+    await dReq('POST', TBAPI + '/webdl/createwebdownload', t, { link: text });
+  }
+  toast('✅ Agregado a ' + DN[svc]);
+  ui.dinput = '';
+  await debridLoad(svc);
+}
+
 /* ================= Eventos ================= */
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]');
@@ -375,7 +529,27 @@ document.addEventListener('click', async (e) => {
   const name = () => ($('#f-name') ? $('#f-name').value.trim() : '');
 
   try {
-    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 120; ui.series = null; render(); }
+    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 120; ui.series = null; render(); if (id === 'debrid' && deb()[ui.dtab] && !dd[ui.dtab].user) debridLoad(ui.dtab); }
+    else if (a === 'dtab') { ui.dtab = id; render(); if (deb()[id] && !dd[id].user) debridLoad(id); }
+    else if (a === 'd-connect') {
+      const v = ($('#d-token').value || '').trim();
+      if (!v) return toast('Pega tu token', true);
+      deb()[ui.dtab] = v; save(); debridLoad(ui.dtab);
+    }
+    else if (a === 'd-disconnect') {
+      if (confirm('¿Desconectar ' + DN[ui.dtab] + '?')) { deb()[ui.dtab] = ''; dd[ui.dtab] = { user: null, items: [], files: {} }; save(); render(); }
+    }
+    else if (a === 'd-refresh') debridLoad(ui.dtab);
+    else if (a === 'd-add') { toast('Agregando…'); await debridAdd(ui.dtab, $('#d-in').value); }
+    else if (a === 'd-open') debridOpen(ui.dtab, el.dataset.key);
+    else if (a === 'd-play' || a === 'd-copy') {
+      const key = el.dataset.key, i = +el.dataset.i;
+      toast('Obteniendo enlace…');
+      const url = await debridUrl(ui.dtab, key, i);
+      if (!url) throw new Error('No se obtuvo el enlace');
+      if (a === 'd-play') play(url, dd[ui.dtab].files[key].list[i].name);
+      else { await navigator.clipboard.writeText(url); toast('🔗 Enlace copiado'); }
+    }
     else if (a === 'open-series') { ui.series = el.dataset.key; ui.limit = 120; render(); }
     else if (a === 'back-series') { ui.series = null; ui.limit = 120; render(); }
     else if (a === 'addtab') { ui.addTab = id; render(); }
@@ -415,7 +589,7 @@ document.addEventListener('click', async (e) => {
     }
     else if (a === 'more') { ui.limit += 120; render(); }
     else if (a === 'export') {
-      const b = new Blob([JSON.stringify(state)], { type: 'application/json' });
+      const b = new Blob([JSON.stringify({ lists: state.lists, favs: state.favs })], { type: 'application/json' });
       const l = document.createElement('a');
       l.href = URL.createObjectURL(b); l.download = 'm3u-colorida-backup.json'; l.click();
     }
@@ -424,10 +598,10 @@ document.addEventListener('click', async (e) => {
       if (!f) return toast('Elige un archivo .json', true);
       const d = JSON.parse(await f.text());
       if (!Array.isArray(d.lists)) throw new Error('Archivo inválido');
-      state = { lists: d.lists, favs: d.favs || [] }; save(); toast('Importado ✅'); render();
+      state = { lists: d.lists, favs: d.favs || [], debrid: deb() }; save(); toast('Importado ✅'); render();
     }
     else if (a === 'wipe') {
-      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state = { lists: [], favs: [] }; save(); render(); }
+      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state = { lists: [], favs: [], debrid: { rd: '', tb: '' } }; dd.rd = { user: null, items: [], files: {} }; dd.tb = { user: null, items: [], files: {} }; save(); render(); }
     }
   } catch (err) {
     toast('Error: ' + (err.message || err), true);
@@ -440,6 +614,7 @@ document.addEventListener('change', (e) => {
   if (a === 'sel-group') { ui.group = e.target.value; render(); }
 });
 document.addEventListener('input', (e) => {
+  if (e.target.dataset.act === 'dinput') ui.dinput = e.target.value;
   if (e.target.dataset.act === 'search') { ui.q = e.target.value; ui.limit = 120; render(); }
 });
 
