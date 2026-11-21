@@ -3,8 +3,55 @@
 /* ================= Estado ================= */
 const KEY = 'm3u-colorida-v1';
 let state = { lists: [], favs: [] };
-try { state = Object.assign(state, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
-const save = () => localStorage.setItem(KEY, JSON.stringify(state));
+
+/* Almacenamiento en IndexedDB (localStorage se llena con ~5 MB) */
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('m3u-colorida-db', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+
+async function loadState() {
+  try {
+    const db = await idb();
+    const data = await new Promise((res, rej) => {
+      const q = db.transaction('kv').objectStore('kv').get(KEY);
+      q.onsuccess = () => res(q.result);
+      q.onerror = () => rej(q.error);
+    });
+    if (data) {
+      state = Object.assign(state, data);
+    } else {
+      // Migrar datos viejos de localStorage, si existen
+      try {
+        const old = JSON.parse(localStorage.getItem(KEY) || 'null');
+        if (old) { state = Object.assign(state, old); await persist(); localStorage.removeItem(KEY); }
+      } catch (e) {}
+    }
+  } catch (e) {
+    toast('No se pudo abrir el almacenamiento: ' + (e.message || e), true);
+  }
+}
+
+async function persist() {
+  const db = await idb();
+  await new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(state, KEY);
+    tx.oncomplete = res;
+    tx.onerror = () => rej(tx.error);
+    tx.onabort = () => rej(tx.error);
+  });
+}
+
+let saveChain = Promise.resolve();
+function save() {
+  saveChain = saveChain.then(persist).catch((e) => toast('No se pudo guardar: ' + (e.message || e), true));
+  return saveChain;
+}
 
 const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120 };
 let hls = null;
@@ -271,4 +318,4 @@ document.addEventListener('input', (e) => {
   if (e.target.dataset.act === 'search') { ui.q = e.target.value; ui.limit = 120; render(); }
 });
 
-render();
+loadState().then(render);
