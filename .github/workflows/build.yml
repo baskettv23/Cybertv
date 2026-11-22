@@ -73,7 +73,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk DANNYTV.apk
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest DANNYTV.apk --title "Última versión" --notes "APK compilado automáticamente (build $GITHUB_RUN_NUMBER)." --target "$GITHUB_SHA"
-          gh release edit latest --draft=false --latest
-          gh release view latest --json isDraft,tagName --jq '"borrador=" + (.isDraft|tostring)' | tee /dev/stderr | grep -q "borrador=false" || { echo "La release quedó como borrador"; exit 1; }
+          for i in 1 2 3 4 5; do
+            gh release delete latest --yes --cleanup-tag 2>&1 || true
+            sleep 3
+            if gh release create latest DANNYTV.apk --title "Última versión" --notes "APK compilado automáticamente (build $GITHUB_RUN_NUMBER)." --target "$GITHUB_SHA" --latest 2>&1; then
+              for j in 1 2 3 4 5 6; do
+                D=$(gh release view latest --json isDraft --jq '.isDraft' 2>&1 || echo true)
+                echo "intento $i/$j borrador=$D"
+                [ "$D" = "false" ] && exit 0
+                gh release edit latest --draft=false --latest 2>&1 || true
+                sleep 5
+              done
+            fi
+            echo "Reintentando publicar la release..."
+          done
+          echo "No se pudo publicar la release"; gh release list || true; exit 1
