@@ -70,3 +70,6 @@ Detrás de la app van cambiando solos pósters de las películas de tus listas. 
 
 ## ⚡ Velocidad
 Las secciones guardan su resultado en memoria (abrir Canales, Películas y Series es casi instantáneo), cargan 48 tarjetas y siguen cargando solas al bajar, la búsqueda espera a que termines de escribir, y ExoPlayer arranca con menos búfer y prueba primero el enlace directo.
+
+## 📡 Pasar listas a otro aparato
+Ajustes → Pasar listas: en la TV toca "Recibir" (muestra un PIN) y en la tablet toca "Enviar a otro aparato", elige la TV y escribe el PIN. Va por el Wi‑Fi local; se envían los enlaces de las listas (y, si quieres, las claves de TMDB/OMDb/Debrid) y la TV las descarga.

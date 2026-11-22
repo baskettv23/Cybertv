@@ -16,9 +16,22 @@ import android.speech.RecognizerIntent;
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.FileProvider;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.Enumeration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
@@ -145,6 +158,240 @@ public class ExternalPlayerPlugin extends Plugin {
         } else {
             call.reject("cancelado");
         }
+    }
+
+
+    // ===================== Pasar listas entre aparatos (misma red Wi‑Fi) =====================
+    private static final int RECV_PORT = 8765;
+    private ServerSocket recvServer;
+    private volatile String recvPin = "";
+
+    private static String ownIp() {
+        try {
+            Enumeration<NetworkInterface> ifs = NetworkInterface.getNetworkInterfaces();
+            while (ifs.hasMoreElements()) {
+                NetworkInterface ni = ifs.nextElement();
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                Enumeration<InetAddress> as = ni.getInetAddresses();
+                while (as.hasMoreElements()) {
+                    InetAddress a = as.nextElement();
+                    if (a instanceof Inet4Address && a.isSiteLocalAddress()) return a.getHostAddress();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return "";
+    }
+
+    @PluginMethod
+    public void localIp(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("ip", ownIp());
+        call.resolve(ret);
+    }
+
+    private void stopRecv() {
+        try {
+            if (recvServer != null) recvServer.close();
+        } catch (Exception ignored) {
+        }
+        recvServer = null;
+    }
+
+    @PluginMethod
+    public void stopReceiver(PluginCall call) {
+        stopRecv();
+        call.resolve();
+    }
+
+    private static String readLine(InputStream in) throws Exception {
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        int c;
+        while ((c = in.read()) != -1) {
+            if (c == '\n') break;
+            if (c != '\r') b.write(c);
+            if (b.size() > 8192) break;
+        }
+        return b.toString("UTF-8");
+    }
+
+    private static void respond(Socket s, int code, String body) {
+        try {
+            byte[] bytes = body.getBytes("UTF-8");
+            OutputStream o = s.getOutputStream();
+            o.write(("HTTP/1.1 " + code + " X\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: " + bytes.length + "\r\nConnection: close\r\n\r\n").getBytes("UTF-8"));
+            o.write(bytes);
+            o.flush();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void handleConn(final Socket s) {
+        try {
+            s.setSoTimeout(15000);
+            InputStream in = new BufferedInputStream(s.getInputStream());
+            String line = readLine(in);
+            int len = 0;
+            String h;
+            while ((h = readLine(in)) != null && !h.isEmpty()) {
+                if (h.toLowerCase().startsWith("content-length:")) len = Integer.parseInt(h.substring(15).trim());
+            }
+            String[] p = line.split(" ");
+            if (p.length < 2) { respond(s, 400, "bad"); return; }
+            String method = p[0], path = p[1];
+            if (method.equals("GET") && path.startsWith("/hello")) {
+                respond(s, 200, "DANNYTV|" + Build.MODEL);
+            } else if (method.equals("POST") && path.startsWith("/send")) {
+                String pin = "";
+                int q = path.indexOf("pin=");
+                if (q >= 0) pin = path.substring(q + 4).split("&")[0];
+                if (recvPin.isEmpty() || !recvPin.equals(pin)) { respond(s, 403, "pin"); return; }
+                if (len <= 0 || len > 3000000) { respond(s, 413, "size"); return; }
+                byte[] body = new byte[len];
+                int off = 0;
+                while (off < len) {
+                    int n = in.read(body, off, len - off);
+                    if (n < 0) break;
+                    off += n;
+                }
+                JSObject ev = new JSObject();
+                ev.put("data", new String(body, 0, off, "UTF-8"));
+                notifyListeners("received", ev);
+                respond(s, 200, "ok");
+            } else {
+                respond(s, 404, "no");
+            }
+        } catch (Exception ignored) {
+        } finally {
+            try { s.close(); } catch (Exception ignored) { }
+        }
+    }
+
+    @PluginMethod
+    public void startReceiver(PluginCall call) {
+        stopRecv();
+        recvPin = call.getString("pin", "");
+        try {
+            recvServer = new ServerSocket();
+            recvServer.setReuseAddress(true);
+            recvServer.bind(new InetSocketAddress(RECV_PORT));
+        } catch (Exception e) {
+            call.reject("No se pudo abrir el puerto " + RECV_PORT);
+            return;
+        }
+        final ServerSocket ss = recvServer;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (!ss.isClosed()) {
+                    try {
+                        final Socket s = ss.accept();
+                        new Thread(new Runnable() {
+                            @Override
+                            public void run() {
+                                handleConn(s);
+                            }
+                        }).start();
+                    } catch (Exception e) {
+                        break;
+                    }
+                }
+            }
+        }).start();
+        JSObject ret = new JSObject();
+        ret.put("ip", ownIp());
+        ret.put("port", RECV_PORT);
+        call.resolve(ret);
+    }
+
+    /** Busca en la red Wi‑Fi otros aparatos con DANNYTV esperando recibir listas. */
+    @PluginMethod
+    public void scanReceivers(final PluginCall call) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final JSArray found = new JSArray();
+                String me = ownIp();
+                if (me.isEmpty()) {
+                    JSObject r = new JSObject();
+                    r.put("devices", found);
+                    r.put("noWifi", true);
+                    call.resolve(r);
+                    return;
+                }
+                final String prefix = me.substring(0, me.lastIndexOf('.') + 1);
+                ExecutorService ex = Executors.newFixedThreadPool(48);
+                for (int i = 1; i < 255; i++) {
+                    final String ip = prefix + i;
+                    if (ip.equals(me)) continue;
+                    ex.submit(new Runnable() {
+                        @Override
+                        public void run() {
+                            Socket s = new Socket();
+                            try {
+                                s.connect(new InetSocketAddress(ip, RECV_PORT), 600);
+                                s.setSoTimeout(1500);
+                                s.getOutputStream().write("GET /hello HTTP/1.0\r\n\r\n".getBytes("UTF-8"));
+                                InputStream in = s.getInputStream();
+                                byte[] buf = new byte[400];
+                                int n = in.read(buf);
+                                String t = n > 0 ? new String(buf, 0, n, "UTF-8") : "";
+                                int k = t.indexOf("DANNYTV|");
+                                if (k >= 0) {
+                                    JSObject d = new JSObject();
+                                    d.put("ip", ip);
+                                    d.put("name", t.substring(k + 8).trim());
+                                    synchronized (found) { found.put(d); }
+                                }
+                            } catch (Exception ignored) {
+                            } finally {
+                                try { s.close(); } catch (Exception ignored) { }
+                            }
+                        }
+                    });
+                }
+                ex.shutdown();
+                try { ex.awaitTermination(15, TimeUnit.SECONDS); } catch (Exception ignored) { }
+                JSObject r = new JSObject();
+                synchronized (found) { r.put("devices", found); }
+                call.resolve(r);
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void sendToReceiver(final PluginCall call) {
+        final String ip = call.getString("ip", "");
+        final String pin = call.getString("pin", "");
+        final String data = call.getString("data", "");
+        if (ip.isEmpty() || data.isEmpty()) { call.reject("Faltan datos"); return; }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection c = null;
+                try {
+                    byte[] body = data.getBytes("UTF-8");
+                    c = (HttpURLConnection) new URL("http://" + ip + ":" + RECV_PORT + "/send?pin=" + Uri.encode(pin)).openConnection();
+                    c.setRequestMethod("POST");
+                    c.setDoOutput(true);
+                    c.setConnectTimeout(6000);
+                    c.setReadTimeout(20000);
+                    c.setFixedLengthStreamingMode(body.length);
+                    OutputStream o = c.getOutputStream();
+                    o.write(body);
+                    o.flush();
+                    o.close();
+                    int code = c.getResponseCode();
+                    if (code == 200) call.resolve();
+                    else if (code == 403) call.reject("PIN incorrecto");
+                    else call.reject("La TV respondió " + code);
+                } catch (Exception e) {
+                    call.reject("No se pudo conectar con la TV");
+                } finally {
+                    if (c != null) c.disconnect();
+                }
+            }
+        }).start();
     }
 
     /** Dice si la app corre en un Android TV / Fire TV. */

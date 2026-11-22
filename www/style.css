@@ -268,3 +268,4 @@ body.tv #zap { display: none; }
 .bgp-img.show, .bgp-img.cur { opacity: 1; }
 #app { position: relative; z-index: 1; }
 @media (max-width: 760px) { #bgposters { grid-template-columns: repeat(4, 1fr); } .bgp-tile:nth-child(n+5) { display: none; } }
+.xf-big { font-size: 44px; text-align: center; margin: 12px 0; letter-spacing: 6px; }
