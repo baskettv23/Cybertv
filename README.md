@@ -39,3 +39,6 @@ El APK queda en `android/app/build/outputs/apk/debug/app-debug.apk`.
 > Nota: la app del Mac no está firmada; la primera vez, abre con clic derecho → Abrir.
 
 Esta app solo gestiona y reproduce las listas que tú agregas; no incluye contenido.
+
+## Actualizar sin desinstalar
+Cada compilación se firma con la misma llave (`cybertv.keystore`) y sube su número de versión, así que el APK nuevo se instala **encima** del anterior y conserva tus listas. El APK más reciente siempre está en **Releases → Última versión**.

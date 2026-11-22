@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -32,9 +35,23 @@ jobs:
           grep -q media3-exoplayer android/app/build.gradle || { echo "No se pudo agregar Media3 a build.gradle"; cat android/app/build.gradle; exit 1; }
           grep -q PlayerActivity android/app/src/main/AndroidManifest.xml || { echo "No se pudo registrar PlayerActivity"; exit 1; }
           grep -q 'AppTheme.NoActionBar"' android/app/src/main/res/values/styles.xml || { echo "Falta el tema AppTheme.NoActionBar"; cat android/app/src/main/res/values/styles.xml; exit 1; }
+      - name: Firma fija y versión creciente (para poder actualizar sin desinstalar)
+        run: |
+          cp cybertv.keystore android/app/cybertv.keystore
+          sed -i '0,/^android {/s//android {\n    signingConfigs {\n        debug {\n            storeFile file("cybertv.keystore")\n            storePassword "cybertv123"\n            keyAlias "cybertv"\n            keyPassword "cybertv123"\n        }\n    }/' android/app/build.gradle
+          sed -i "s/versionCode 1\b/versionCode $GITHUB_RUN_NUMBER/; s/versionName \"1.0\"/versionName \"1.$GITHUB_RUN_NUMBER\"/" android/app/build.gradle
+          grep -q 'cybertv.keystore' android/app/build.gradle || { echo "No se pudo configurar la firma"; cat android/app/build.gradle; exit 1; }
+          grep -q "versionCode $GITHUB_RUN_NUMBER" android/app/build.gradle || { echo "No se pudo fijar versionCode"; cat android/app/build.gradle; exit 1; }
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: M3U-Colorida-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Publicar APK en Releases (enlace fijo de descarga)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk M3U-Colorida.apk
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest M3U-Colorida.apk --title "Última versión" --notes "APK compilado automáticamente (build $GITHUB_RUN_NUMBER)." --target "$GITHUB_SHA"
