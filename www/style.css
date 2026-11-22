@@ -222,3 +222,36 @@ body.tv #zap { display: none; }
   .nav-item { padding: 8px 12px; font-size: 14px; }
   .brand { padding-bottom: 6px; }
 }
+
+/* ---------- Zona Deportes ---------- */
+.sp-car { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 2px; }
+.sp-big { flex: 0 0 100%; scroll-snap-align: center; border-radius: 26px; padding: 18px 22px; cursor: pointer; background: linear-gradient(160deg, #101a30, #0b1020); border: 1px solid rgba(255,255,255,.12); }
+.sp-top { display: flex; justify-content: space-between; align-items: center; }
+.sp-lg { font-size: 14px; color: #9fb3d9; border-left: 3px solid #1d4ed8; padding-left: 8px; }
+.sp-live { background: #e63946; color: #fff; font-weight: 800; font-size: 13px; padding: 5px 10px; border-radius: 8px; }
+.sp-pre { color: #9fb3d9; font-size: 13px; font-weight: 700; }
+.sp-teams { display: flex; justify-content: space-around; align-items: center; margin: 10px 0; gap: 8px; }
+.sp-t { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; flex: 1; }
+.sp-t img { width: 84px; height: 84px; object-fit: contain; }
+.sp-t small, .sp-rt small { color: #22d3ee; font-weight: 700; display: block; }
+.sp-m { text-align: center; }
+.sp-sc { font-size: 40px; font-weight: 900; }
+.sp-row .sp-sc { font-size: 26px; }
+.sp-sub { font-size: 12px; color: #9fb3d9; font-weight: 700; }
+.sp-sub.live { color: #ff4d5e; }
+.sp-go { text-align: center; color: #22d3ee; font-weight: 700; }
+.sp-dots { display: flex; gap: 8px; justify-content: center; margin: 10px 0; }
+.sp-dots i { width: 8px; height: 8px; border-radius: 8px; background: rgba(255,255,255,.3); }
+.sp-dots i.on { width: 28px; background: #22d3ee; }
+.sp-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-top: 8px; }
+.sp-row { border-radius: 20px; padding: 12px 16px; cursor: pointer; background: #0e1424; border: 1px solid rgba(255,255,255,.1); }
+.sp-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.sp-rt { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.sp-rt.right { justify-content: flex-end; text-align: right; }
+.sp-rt img { width: 44px; height: 44px; object-fit: contain; }
+.sp-ph { font-size: 30px; }
+.sp-chips { display: flex; gap: 10px; overflow-x: auto; padding: 14px 0 4px; }
+.sp-chip { flex: 0 0 auto; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: #fff; font-weight: 800; padding: 12px 20px; border-radius: 30px; font-size: 16px; cursor: pointer; }
+.sp-chip span { opacity: .6; font-weight: 600; margin-left: 4px; }
+.sp-chip.on { background: rgba(34,211,238,.16); border-color: #22d3ee; color: #22d3ee; }
+@media (min-width: 900px) { .sp-big { flex-basis: 70%; } }

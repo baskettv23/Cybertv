@@ -55,3 +55,6 @@ Cada compilación se firma con la misma llave (`cybertv.keystore`) y sube su nú
 
 ## 📺 Modo TV (Android TV / Fire TV)
 El APK aparece en el menú de apps de la tele con su banner. Se maneja con el control remoto: flechas para moverte, OK para elegir, Atrás para volver. En el reproductor: ▲/▼ cambia de canal, ◀/▶ salta 10 s en películas. Se activa solo en TV; también puedes forzarlo en Ajustes → Modo TV.
+
+## 🏆 Zona Deportes
+Marcadores en vivo (NFL, NBA, MLB, Liga MX, MLS, Champions, LaLiga, Premier, NHL) con el feed público de ESPN, y tus canales de deportes agrupados: Sports USA, Sports MX, PPV, Fútbol, Americano, Básquetbol y Béisbol. Al tocar un partido te muestra los canales de tus listas donde podría estar.
