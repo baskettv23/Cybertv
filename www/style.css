@@ -171,3 +171,31 @@ video { width: 100%; max-height: 72vh; background: #000; border-radius: 16px; }
 .info-actions .btn { margin: 0; }
 .tmdb-credit { margin-top: 14px; font-size: 11px; }
 @media (max-width: 560px) { .info-poster { width: 100px; flex-basis: 100px; } .info-top h1 { font-size: 20px; } }
+
+/* ===== Temas ===== */
+:root[data-theme="ocean"]  { --bg1:#001d3d; --bg2:#003566; --bg3:#00252f; }
+:root[data-theme="sunset"] { --bg1:#2b0a1f; --bg2:#6a1b3a; --bg3:#3d1a0a; }
+:root[data-theme="forest"] { --bg1:#06251b; --bg2:#14532d; --bg3:#0b2e2a; }
+:root[data-theme="amoled"] { --bg1:#000; --bg2:#000; --bg3:#0a0a0a; --card: rgba(255,255,255,.05); }
+
+/* ===== Filas deslizables (Inicio, fichas) ===== */
+.hrow { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px; scroll-snap-type: x proximity; }
+.hrow .ch { flex: 0 0 140px; scroll-snap-align: start; }
+.hrow .ch.poster img, .hrow .ch.poster .ph { height: 170px; }
+
+/* ===== Progreso, visto, calidad, guía ===== */
+.bar { height: 5px; border-radius: 4px; background: rgba(255,255,255,.18); margin-top: 6px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--cyan)); }
+.seen { font-size: 11px; font-weight: 800; color: var(--green); margin-top: 6px; }
+.q { display: inline-block; font-size: 10px; font-weight: 900; padding: 2px 7px; border-radius: 999px; margin-top: 6px; color: #002; background: #adb5bd; }
+.q.q4 { background: linear-gradient(90deg, #ffd60a, #ff9e00); }
+.q.q3 { background: var(--green); }
+.q.q2 { background: var(--cyan); }
+.q.dead { background: #d00000; color: #fff; }
+.epg { font-size: 11px; color: var(--yellow); margin-top: 4px; min-height: 28px; overflow: hidden; }
+.tools { margin: 10px 0; }
+.tools .tab { font-size: 12px; padding: 8px 12px; }
+
+/* ===== Perfiles ===== */
+.pcard.cur { border-color: var(--green); box-shadow: 0 0 0 2px var(--green) inset; }
+.pcard .ph { font-size: 38px; }

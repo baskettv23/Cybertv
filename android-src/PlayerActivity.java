@@ -1,10 +1,15 @@
 package com.m3u.colorida;
 
 import android.app.Activity;
+import android.app.PictureInPictureParams;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Toast;
 
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
@@ -16,10 +21,16 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.ui.PlayerView;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Pantalla completa con ExoPlayer (Media3).
- * Prueba las URLs en orden. Si el servidor responde 401/403/406 reintenta con otra
- * identificación (User-Agent). Espera un poco entre intentos para no saturar al proveedor.
+ * - Prueba las URLs en orden y reintenta con otro User-Agent si el servidor responde 401/403/406.
+ * - Retoma desde una posición (start) y pasa solo al siguiente episodio (queue).
+ * - Guarda el progreso para que la app lo lea al volver.
+ * - Imagen en imagen al salir con Inicio.
  */
 public class PlayerActivity extends Activity {
     private static final String[] UAS = {
@@ -30,10 +41,16 @@ public class PlayerActivity extends Activity {
     private ExoPlayer player;
     private PlayerView view;
     private String[] urls;
+    private String[] queue = new String[0];
+    private String[] queueTitles = new String[0];
+    private int qi = 0;
+    private String key;
+    private long startMs = 0;
     private int idx = 0;
     private int uaIdx = 0;
     private int lastCode = -1;
     private String lastError = "";
+    private final ArrayList<String> doneKeys = new ArrayList<String>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,8 +62,16 @@ public class PlayerActivity extends Activity {
             finish();
             return;
         }
+        key = getIntent().getStringExtra("key");
+        if (key == null || key.isEmpty()) key = urls[urls.length - 1];
+        startMs = getIntent().getLongExtra("start", 0);
+        String[] q = getIntent().getStringArrayExtra("queue");
+        String[] qt = getIntent().getStringArrayExtra("queueTitles");
+        if (q != null) queue = q;
+        if (qt != null) queueTitles = qt;
 
         view = new PlayerView(this);
+        view.setShowSubtitleButton(true);
         setContentView(view);
         hideSystemUi();
 
@@ -56,6 +81,11 @@ public class PlayerActivity extends Activity {
             @Override
             public void onPlayerError(PlaybackException error) {
                 onFail(error);
+            }
+
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_ENDED) onEnded();
             }
         });
         startCurrent();
@@ -71,9 +101,32 @@ public class PlayerActivity extends Activity {
     }
 
     private void startCurrent() {
-        player.setMediaSource(sourceFor(urls[idx], UAS[uaIdx]));
+        MediaSource src = sourceFor(urls[idx], UAS[uaIdx]);
+        if (startMs > 0) {
+            player.setMediaSource(src, startMs);
+            startMs = 0;
+        } else {
+            player.setMediaSource(src);
+        }
         player.prepare();
         player.setPlayWhenReady(true);
+    }
+
+    /** Termina el episodio: lo marca como visto y pasa al siguiente de la cola, si hay. */
+    private void onEnded() {
+        doneKeys.add(key);
+        saveProgress();
+        if (qi < queue.length) {
+            key = queue[qi];
+            urls = new String[]{queue[qi]};
+            String title = qi < queueTitles.length ? queueTitles[qi] : "";
+            qi++;
+            idx = 0;
+            uaIdx = 0;
+            startMs = 0;
+            Toast.makeText(this, "Siguiente: " + title, Toast.LENGTH_LONG).show();
+            startCurrent();
+        }
     }
 
     private int statusOf(Throwable t) {
@@ -133,6 +186,25 @@ public class PlayerActivity extends Activity {
         view.setCustomErrorMessage(msg);
     }
 
+    /** Guarda dónde se quedó (solo películas y episodios, no canales en vivo). */
+    private void saveProgress() {
+        if (player == null || key == null) return;
+        long pos = player.getCurrentPosition();
+        long dur = player.getDuration();
+        SharedPreferences sp = getSharedPreferences("m3u_progress", MODE_PRIVATE);
+        Set<String> done = new HashSet<String>(sp.getStringSet("done", new HashSet<String>()));
+        done.addAll(doneKeys);
+        SharedPreferences.Editor ed = sp.edit();
+        ed.putStringSet("done", done);
+        if (dur > 0) {
+            ed.putString("url", key);
+            ed.putLong("pos", pos);
+            ed.putLong("dur", dur);
+            ed.putLong("t", System.currentTimeMillis());
+        }
+        ed.apply();
+    }
+
     private void hideSystemUi() {
         view.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
@@ -142,16 +214,46 @@ public class PlayerActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
     }
 
+    private boolean inPip() {
+        return Build.VERSION.SDK_INT >= 24 && isInPictureInPictureMode();
+    }
+
+    /** Al pulsar Inicio mientras se reproduce: seguir en una ventanita (imagen en imagen). */
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (Build.VERSION.SDK_INT >= 26 && player != null && player.isPlaying()) {
+            try {
+                enterPictureInPictureMode(new PictureInPictureParams.Builder().build());
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        if (view != null) view.setUseController(!isInPictureInPictureMode);
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
-        if (player != null) player.pause();
+        saveProgress();
+        if (player != null && !inPip()) player.pause();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        saveProgress();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         if (player != null) {
+            saveProgress();
             player.release();
             player = null;
         }

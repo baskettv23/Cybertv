@@ -14,43 +14,108 @@ function idb() {
   });
 }
 
+let listsDirty = false;
+
 async function loadState() {
   try {
     const db = await idb();
-    const data = await new Promise((res, rej) => {
-      const q = db.transaction('kv').objectStore('kv').get(KEY);
+    const get = (k) => new Promise((res, rej) => {
+      const q = db.transaction('kv').objectStore('kv').get(k);
       q.onsuccess = () => res(q.result);
       q.onerror = () => rej(q.error);
     });
-    if (data) {
-      state = Object.assign(state, data);
+    const meta = await get('meta');
+    if (meta) {
+      state = Object.assign(state, meta, { lists: (await get('lists')) || [] });
     } else {
-      // Migrar datos viejos de localStorage, si existen
-      try {
-        const old = JSON.parse(localStorage.getItem(KEY) || 'null');
-        if (old) { state = Object.assign(state, old); await persist(); localStorage.removeItem(KEY); }
-      } catch (e) {}
+      const old = await get(KEY); // formato anterior: todo junto
+      if (old) { state = Object.assign(state, old); listsDirty = true; await persist(true); }
+      else {
+        try {
+          const ls = JSON.parse(localStorage.getItem(KEY) || 'null');
+          if (ls) { state = Object.assign(state, ls); listsDirty = true; await persist(); localStorage.removeItem(KEY); }
+        } catch (e) {}
+      }
     }
   } catch (e) {
     toast('No se pudo abrir el almacenamiento: ' + (e.message || e), true);
   }
+  ensureProfiles();
 }
 
-async function persist() {
+async function persist(dropOld) {
   const db = await idb();
-  await new Promise((res, rej) => {
-    const tx = db.transaction('kv', 'readwrite');
-    tx.objectStore('kv').put(state, KEY);
-    tx.oncomplete = res;
-    tx.onerror = () => rej(tx.error);
-    tx.onabort = () => rej(tx.error);
-  });
+  const { lists, ...meta } = state;
+  const writeLists = listsDirty;
+  listsDirty = false;
+  try {
+    await new Promise((res, rej) => {
+      const tx = db.transaction('kv', 'readwrite');
+      const os = tx.objectStore('kv');
+      os.put(meta, 'meta');
+      if (writeLists) os.put(lists, 'lists');
+      if (dropOld) os.delete(KEY);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+      tx.onabort = () => rej(tx.error);
+    });
+  } catch (e) { if (writeLists) listsDirty = true; throw e; }
 }
 
 let saveChain = Promise.resolve();
-function save() {
-  saveChain = saveChain.then(persist).catch((e) => toast('No se pudo guardar: ' + (e.message || e), true));
+// save(): guarda todo (incluye las listas, que pesan). saveMeta(): solo ajustes, favoritos e historial (liviano).
+function save() { listsDirty = true; return saveMeta(); }
+function saveMeta() {
+  syncProfile();
+  saveChain = saveChain.then(() => persist()).catch((e) => toast('No se pudo guardar: ' + (e.message || e), true));
   return saveChain;
+}
+
+/* ===== Perfiles: favoritos e historial por perfil ===== */
+function ensureProfiles() {
+  if (!Array.isArray(state.profiles) || !state.profiles.length) {
+    state.profiles = [{ id: 'p1', name: 'Principal', kids: false, favs: state.favs || [], hist: state.hist || {} }];
+    state.cur = 'p1';
+  }
+  const p = state.profiles.find((x) => x.id === state.cur) || state.profiles[0];
+  state.cur = p.id;
+  p.favs = p.favs || []; p.hist = p.hist || {};
+  state.favs = p.favs; state.hist = p.hist;
+}
+function syncProfile() {
+  if (!Array.isArray(state.profiles) || !state.profiles.length) return;
+  const p = state.profiles.find((x) => x.id === state.cur) || state.profiles[0];
+  p.favs = state.favs || []; p.hist = state.hist || {};
+}
+const curKids = () => { const p = (state.profiles || []).find((x) => x.id === state.cur); return !!(p && p.kids); };
+
+function backupObj() {
+  syncProfile();
+  return { lists: state.lists, favs: state.favs, hist: state.hist || {}, profiles: state.profiles, cur: state.cur, theme: state.theme };
+}
+function restoreObj(d) {
+  state.lists = d.lists;
+  if (Array.isArray(d.profiles) && d.profiles.length) { state.profiles = d.profiles; state.cur = d.cur; }
+  else { ensureProfiles(); state.profiles.find((x) => x.id === state.cur).favs = d.favs || []; state.profiles.find((x) => x.id === state.cur).hist = d.hist || {}; }
+  if (d.theme) state.theme = d.theme;
+  ensureProfiles();
+  listsDirty = true;
+}
+
+/* ===== Guía (EPG): de dónde sale ===== */
+function epgFromText(text) {
+  const m = String(text).slice(0, 3000).match(/^#EXTM3U[^\n]*?(?:url-tvg|x-tvg-url)="([^"]+)"/i);
+  return m ? m[1].split(',')[0].trim() : '';
+}
+function deriveXmltv(url) {
+  try {
+    const u = new URL(url);
+    const user = u.searchParams.get('username'), pass = u.searchParams.get('password');
+    if (/\/get\.php$/i.test(u.pathname.replace(/\/+/g, '/')) && user && pass) {
+      return `${u.origin}/xmltv.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+    }
+  } catch (e) {}
+  return '';
 }
 
 const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120, series: null, dtab: 'rd', dinput: '', dfilter: '', gq: '', gkind: 'all', tmdbRes: [], tmdbFor: '' };
@@ -126,15 +191,16 @@ async function fetchText(url) {
 function addList(name, url, text) {
   const channels = parseM3U(text);
   if (!channels.length) { toast('No se encontraron canales en esa lista', true); return false; }
-  state.lists.push({ id: uid(), name: name || 'Lista ' + (state.lists.length + 1), url: url || '', addedAt: Date.now(), channels });
+  state.lists.push({ id: uid(), name: name || 'Lista ' + (state.lists.length + 1), url: url || '', addedAt: Date.now(), epg: epgFromText(text), channels });
   save();
   toast('✅ Lista agregada: ' + channels.length + ' canales');
   return true;
 }
 
 /* ================= Render ================= */
+function navVisible(n) { return !(curKids() && ['add', 'lists', 'debrid', 'settings'].includes(n[0])); }
 function renderNav() {
-  $('#nav').innerHTML = '<div class="brand">📡 M3U Colorida</div>' + NAV.map(([id, label, c]) =>
+  $('#nav').innerHTML = '<div class="brand">📡 M3U Colorida</div>' + NAV.filter(navVisible).map(([id, label, c]) =>
     `<button class="nav-item ${ui.view === id ? 'active' : ''}" style="--c:${c}" data-act="nav" data-id="${id}">${label}</button>`).join('');
 }
 
@@ -154,7 +220,7 @@ function isAdult(c) {
   return v;
 }
 const parentalOn = () => !!(state.parental && state.parental.on);
-const vis = (c) => !parentalOn() || ui.unlocked || !isAdult(c);
+const vis = (c) => (curKids() ? !isAdult(c) : (!parentalOn() || ui.unlocked || !isAdult(c)));
 function hiddenCount() { let n = 0; for (const l of state.lists) for (const c of l.channels) if (isAdult(c)) n++; return n; }
 
 async function pinHash(pin, salt) {
@@ -281,10 +347,10 @@ function extPlugin() {
   if (!C) return null;
   return (C.Plugins && C.Plugins.ExternalPlayer) || (C.registerPlugin && C.registerPlugin('ExternalPlayer')) || null;
 }
-async function playExo(url, name) {
+async function playExo(url, name, extra) {
   const P = extPlugin();
   if (!P || !P.playExo) { toast('ExoPlayer no está disponible en esta versión. Actualiza el APK.', true); return false; }
-  try { await P.playExo({ urls: candidates(url), title: name || '' }); return true; }
+  try { await P.playExo({ urls: candidates(url), title: name || '', ...(extra || {}) }); return true; }
   catch (e) { toast('No se pudo abrir ExoPlayer: ' + (e.message || e), true); return false; }
 }
 async function playExternal(url, name, pkg) {
@@ -324,6 +390,13 @@ async function tmdbFind(name, kind) {
 }
 function setInfo(html) { const el = $('#info'); el.innerHTML = '<div class="info-box">' + html + '</div>'; el.classList.remove('hidden'); }
 function closeInfo() { $('#info').classList.add('hidden'); }
+function extraInfo(d) {
+  const vids = ((d.videos && d.videos.results) || []).filter((v) => v.site === 'YouTube');
+  const tr = vids.find((v) => v.type === 'Trailer' && v.official) || vids.find((v) => v.type === 'Trailer') || vids[0];
+  const recs = ((d.recommendations && d.recommendations.results) || []).slice(0, 8);
+  return (tr ? `<p><button class="btn pink small" data-act="trailer" data-key="${esc(tr.key)}">▶ Ver tráiler</button></p>` : '') +
+    (recs.length ? `<h2>Recomendadas</h2><div class="hrow">${recs.map((r) => tmdbCard({ ...r, media_type: r.media_type || (d.title ? 'movie' : 'tv') })).join('')}</div>` : '');
+}
 function infoHtml(type, d) {
   const title = d.title || d.name || '';
   const year = (d.release_date || d.first_air_date || '').slice(0, 4);
@@ -337,6 +410,7 @@ function infoHtml(type, d) {
       ${d.tagline ? `<p><i>${esc(d.tagline)}</i></p>` : ''}</div></div>
     <p class="overview">${esc(d.overview || 'Sin sinopsis en español.')}</p>
     ${cast ? `<p class="muted"><b>Reparto:</b> ${esc(cast)}</p>` : ''}
+    ${extraInfo(d)}
     <div class="info-actions">
       <button class="btn green small" data-act="info-search" data-title="${esc(title)}">🔎 Buscar en mis listas</button>
       <button class="btn yellow small" data-act="deb-find" data-name="${esc(title)}">⚡ En mis cuentas Debrid</button>
@@ -347,7 +421,7 @@ async function showTmdb(type, id) {
   const k = type + ':' + id;
   setInfo('<p class="muted">Cargando…</p><button class="btn red small" data-act="close-info">✕ Cerrar</button>');
   try {
-    if (!tmdbCache.has(k)) tmdbCache.set(k, await tmdb(`/${type}/${id}`, { append_to_response: 'credits' }));
+    if (!tmdbCache.has(k)) tmdbCache.set(k, await tmdb(`/${type}/${id}`, { append_to_response: 'credits,videos,recommendations', include_video_language: 'es,en,null' }));
     setInfo(infoHtml(type, tmdbCache.get(k)));
   } catch (e) {
     setInfo(`<p>⚠️ ${esc(e.message)}</p><button class="btn red small" data-act="close-info">✕ Cerrar</button>`);
@@ -472,8 +546,13 @@ const views = {
       <button class="btn green" data-act="add-file">📂 Importar archivo</button>`;
     if (ui.addTab === 'text') body = `<label>Pega el contenido de la lista</label><textarea id="f-text" placeholder="#EXTM3U&#10;#EXTINF:-1 group-title=&quot;Noticias&quot;,Canal 1&#10;http://..."></textarea>
       <button class="btn green" data-act="add-text">📋 Agregar</button>`;
+    if (ui.addTab === 'xtream') body = `<label>Servidor</label><input id="x-server" placeholder="http://servidor.com:8080" inputmode="url">
+      <label style="display:block;margin-top:10px">Usuario</label><input id="x-user" autocomplete="off">
+      <label style="display:block;margin-top:10px">Clave</label><input id="x-pass" type="password" autocomplete="off">
+      <button class="btn green" data-act="add-xtream">🔑 Conectar y agregar</button>
+      <p class="muted">Arma el enlace de tu lista por ti y activa la guía de programación.</p>`;
     return `<h1>➕ Agregar lista</h1><p class="muted">Elige cómo quieres añadir tu lista.</p>
-    <div class="card"><div class="tabs">${tab('url', '🌐 URL')}${tab('file', '📂 Archivo')}${tab('text', '📋 Pegar')}</div>
+    <div class="card"><div class="tabs">${tab('url', '🌐 URL')}${tab('file', '📂 Archivo')}${tab('text', '📋 Pegar')}${tab('xtream', '🔑 Xtream')}</div>
     <label style="display:block;margin-top:16px">Nombre de la lista</label><input id="f-name" placeholder="Mi lista">${body}</div>`;
   },
 
@@ -622,8 +701,9 @@ function candidates(url) {
 
 function play(url, name) {
   lastPlay = { url, name };
+  if (typeof onPlayStart === 'function') onPlayStart(url, name);
   const mode = state.player || 'auto';
-  if (isAndroid() && mode === 'exo') { playExo(url, name); return; }
+  if (isAndroid() && mode === 'exo') { playExo(url, name, typeof exoExtra === 'function' ? exoExtra(url) : {}); return; }
   if (isAndroid() && mode !== 'builtin') {
     const pkg = (PLAYERS.find((x) => x[0] === mode) || [])[3];
     if (pkg !== null && pkg !== undefined) { playExternal(url, name, pkg); return; }
@@ -924,6 +1004,16 @@ document.addEventListener('click', async (e) => {
       const text = await fetchText(url);
       if (addList(name() || new URL(url).hostname, url, text)) { ui.view = 'lists'; render(); }
     }
+    else if (a === 'add-xtream') {
+      let sv = $('#x-server').value.trim().replace(/\/+$/, '');
+      const us = $('#x-user').value.trim(), pw = $('#x-pass').value.trim();
+      if (!sv || !us || !pw) return toast('Completa servidor, usuario y clave', true);
+      if (!/^https?:\/\//i.test(sv)) sv = 'http://' + sv;
+      const url = `${sv}/get.php?username=${encodeURIComponent(us)}&password=${encodeURIComponent(pw)}&type=m3u_plus&output=ts`;
+      toast('Descargando…');
+      const text = await fetchText(url);
+      if (addList(name() || new URL(sv).hostname, url, text)) { ui.view = 'lists'; render(); }
+    }
     else if (a === 'add-file') {
       const f = $('#f-file').files[0];
       if (!f) return toast('Elige un archivo', true);
@@ -953,7 +1043,7 @@ document.addEventListener('click', async (e) => {
     }
     else if (a === 'more') { ui.limit += 120; render(); }
     else if (a === 'export') {
-      const b = new Blob([JSON.stringify({ lists: state.lists, favs: state.favs })], { type: 'application/json' });
+      const b = new Blob([JSON.stringify(backupObj())], { type: 'application/json' });
       const l = document.createElement('a');
       l.href = URL.createObjectURL(b); l.download = 'm3u-colorida-backup.json'; l.click();
     }
@@ -962,11 +1052,11 @@ document.addEventListener('click', async (e) => {
       if (!f) return toast('Elige un archivo .json', true);
       const d = JSON.parse(await f.text());
       if (!Array.isArray(d.lists)) throw new Error('Archivo inválido');
-      state = { lists: d.lists, favs: d.favs || [], debrid: deb(), player: state.player, tmdb: state.tmdb, parental: state.parental }; save(); toast('Importado ✅'); render();
+      restoreObj(d); save(); toast('Importado ✅'); render();
     }
     else if (a === 'wipe') {
       if (parentalOn() && !ui.unlocked) return toast('Desbloquea el control parental primero', true);
-      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state = { lists: [], favs: [], debrid: { rd: '', tb: '' }, player: state.player, parental: state.parental }; dd.rd = { user: null, items: [], files: {} }; dd.tb = { user: null, items: [], files: {} }; save(); render(); }
+      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state.lists = []; state.favs.length = 0; state.hist = {}; state.dead = {}; state.debrid = { rd: '', tb: '' }; state.tmdb = ''; dd.rd = { user: null, items: [], files: {} }; dd.tb = { user: null, items: [], files: {} }; save(); render(); }
     }
   } catch (err) {
     toast('Error: ' + (err.message || err), true);
@@ -985,9 +1075,13 @@ document.addEventListener('input', (e) => {
   if (e.target.dataset.act === 'search') { ui.q = e.target.value; ui.limit = 120; render(); }
 });
 
-loadState().then(() => {
-  render();
-  if (isAndroid()) {
-    checkUpdate().then(() => { if (hasUpdate()) { toast('🆕 Hay una actualización: Ajustes → Actualizaciones'); if (ui.view === 'settings') render(); } }).catch(() => {});
-  }
-});
+function boot() {
+  loadState().then(() => {
+    if (typeof afterBoot === 'function') afterBoot();
+    render();
+    if (isAndroid()) {
+      checkUpdate().then(() => { if (hasUpdate()) { toast('🆕 Hay una actualización: Ajustes → Actualizaciones'); if (ui.view === 'settings') render(); } }).catch(() => {});
+    }
+  });
+}
+document.addEventListener('DOMContentLoaded', boot);

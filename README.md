@@ -13,6 +13,14 @@ Gestor colorido de listas M3U para **Mac** (Electron) y **Android** (APK con Cap
 - **Menú de reproductor** (Ajustes): Automático, ExoPlayer, Integrado, VLC, mpv, MX Player o Sistema (en Android)
 - Real-Debrid y TorBox: ver y reproducir lo que ya tienes en tus cuentas
 - **Actualizar desde la app** (Ajustes → Actualizaciones, Android): descarga e instala la última versión
+- **Continuar viendo**, historial y marcar como visto (también con ExoPlayer)
+- **Siguiente episodio automático** (integrado y ExoPlayer)
+- **Inicio con filas**: continuar viendo, últimas películas, tendencias y recomendados de TMDB
+- **Guía de programación (EPG)** XMLTV: "ahora" en cada canal
+- **Cambio de canal** con ▲▼, flechas o deslizando; calidad 4K/FHD/HD, sin duplicados, revisor de canales caídos
+- **Perfiles** (con perfil infantil), temas de color, resumen de uso, búsqueda por voz
+- **Imagen en imagen** y botón de subtítulos/audio en ExoPlayer; tráiler y recomendadas en la ficha de TMDB
+- Conexión **Xtream** con servidor, usuario y clave
 - **Control parental** con PIN: oculta canales, películas y series para adultos (Ajustes)
 
 *Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.*

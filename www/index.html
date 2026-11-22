@@ -16,7 +16,8 @@
     <div class="player-box">
       <div class="player-top">
         <span id="player-title">—</span>
-        <button class="btn red" data-act="close-player">✕ Cerrar</button>
+        <span><span id="zap" class="hidden"><button class="btn yellow small" data-act="zap-prev">▲</button> <span id="zap-n" class="muted"></span> <button class="btn yellow small" data-act="zap-next">▼</button></span>
+        <button class="btn red" data-act="close-player">✕ Cerrar</button></span>
       </div>
       <video id="video" controls autoplay playsinline></video>
       <p id="player-msg" class="muted"></p>
@@ -29,5 +30,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
   <script src="app.js"></script>
+  <script src="features.js"></script>
 </body>
 </html>
