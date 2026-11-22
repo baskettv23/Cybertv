@@ -58,3 +58,6 @@ El APK aparece en el menú de apps de la tele con su banner. Se maneja con el co
 
 ## 🏆 Zona Deportes
 Marcadores en vivo (NFL, NBA, MLB, Liga MX, MLS, Champions, LaLiga, Premier, NHL) con el feed público de ESPN, y tus canales de deportes agrupados: Sports USA, Sports MX, PPV, Fútbol, Americano, Básquetbol y Béisbol. Al tocar un partido te muestra los canales de tus listas donde podría estar.
+
+## 🎞️ Por plataforma
+En Películas y Series aparecen botones por plataforma (Netflix, Disney+, Prime Video, HBO Max, Apple TV+, Paramount+, Hulu, Star+, Peacock, Crunchyroll) según el grupo o la etiqueta del título en tus listas.
