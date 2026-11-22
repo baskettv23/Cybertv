@@ -35,6 +35,15 @@ jobs:
           grep -q media3-exoplayer android/app/build.gradle || { echo "No se pudo agregar Media3 a build.gradle"; cat android/app/build.gradle; exit 1; }
           grep -q PlayerActivity android/app/src/main/AndroidManifest.xml || { echo "No se pudo registrar PlayerActivity"; exit 1; }
           grep -q 'AppTheme.NoActionBar"' android/app/src/main/res/values/styles.xml || { echo "Falta el tema AppTheme.NoActionBar"; cat android/app/src/main/res/values/styles.xml; exit 1; }
+      - name: Permitir actualizar desde la app (instalador + FileProvider)
+        run: |
+          mkdir -p android/app/src/main/res/xml
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<paths>\n    <cache-path name="updates" path="updates/" />\n</paths>\n' > android/app/src/main/res/xml/update_paths.xml
+          M=android/app/src/main/AndroidManifest.xml
+          grep -q REQUEST_INSTALL_PACKAGES $M || sed -i 's#<application#<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application#' $M
+          sed -i 's#</application>#    <provider android:name=".UpdateFileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">\n            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />\n        </provider>\n    </application>#' $M
+          grep -q REQUEST_INSTALL_PACKAGES $M || { echo "Falta el permiso de instalación"; cat $M; exit 1; }
+          grep -q UpdateFileProvider $M || { echo "No se pudo registrar el proveedor de archivos"; cat $M; exit 1; }
       - name: Firma fija y versión creciente (para poder actualizar sin desinstalar)
         run: |
           cp cybertv.keystore android/app/cybertv.keystore

@@ -375,6 +375,40 @@ function tmdbCard(r) {
 const normCache = new WeakMap();
 const normName = (c) => { let n = normCache.get(c); if (n === undefined) { n = nrm(c.name); normCache.set(c, n); } return n; };
 
+/* ================= Actualizar desde la app ================= */
+const REPO = 'baskettv23/Cybertv';
+async function appVersion() {
+  const P = extPlugin();
+  if (!P || !P.getVersion) return null;
+  try { return await P.getVersion(); } catch (e) { return null; }
+}
+// La versión instalada (versionCode) es el número de build; la última Release lo trae en su descripción.
+async function checkUpdate() {
+  const r = await fetch(`https://api.github.com/repos/${REPO}/releases/tags/latest`, { headers: { Accept: 'application/vnd.github+json' } });
+  if (!r.ok) throw new Error(r.status === 404 ? 'Todavía no hay versiones publicadas' : 'GitHub respondió HTTP ' + r.status);
+  const rel = await r.json();
+  const asset = (rel.assets || []).find((a) => /\.apk$/i.test(a.name));
+  const m = String(rel.body || '').match(/build (\d+)/i);
+  const cur = await appVersion();
+  ui.update = { remote: m ? +m[1] : 0, cur: cur ? +cur.code : 0, url: asset ? asset.browser_download_url : '', checked: true };
+  return ui.update;
+}
+const hasUpdate = () => !!(ui.update && ui.update.remote > ui.update.cur && ui.update.url);
+function updateCard() {
+  if (!isAndroid()) {
+    return `<p class="muted">Actualizar dentro de la app solo está en Android. En Mac, descarga la versión nueva desde la página de descargas.</p>
+      <button class="btn green" data-act="open-releases">🌐 Abrir descargas</button>`;
+  }
+  const u = ui.update;
+  const info = !u ? 'Pulsa el botón para ver si hay una versión nueva.'
+    : u.remote > u.cur ? `🆕 Hay una versión nueva (build ${u.remote}). Tienes la ${u.cur}.`
+    : `✅ Ya tienes la última versión (build ${u.cur}).`;
+  return `<p class="muted">${info}</p>
+    <button class="btn green" data-act="upd-check">🔄 Buscar actualización</button>
+    ${hasUpdate() ? '<button class="btn yellow" data-act="upd-install">⬇️ Actualizar ahora</button>' : ''}
+    <p class="muted" style="margin-top:10px">Al actualizar, Android te pedirá confirmar la instalación. Tus listas y ajustes se conservan.</p>`;
+}
+
 function parentalCard() {
   const num = 'type="password" inputmode="numeric" autocomplete="off" maxlength="8"';
   if (!parentalOn()) {
@@ -548,6 +582,7 @@ const views = {
         <p class="muted" style="margin-top:12px">${android
           ? 'VLC, mpv y MX Player se abren como apps aparte: instálalos desde Play Store. Si no está instalado, se abre el selector del sistema.'
           : 'En la app de Android también puedes elegir VLC, mpv o MX Player.'}</p></div>
+      <div class="card"><h2>🔄 Actualizaciones</h2>${updateCard()}</div>
       <div class="card"><h2>🔒 Control parental</h2>${parentalCard()}</div>
       <div class="card"><h2>🎞️ TMDB (información de películas y series)</h2>
         <p class="muted">Clave gratis en themoviedb.org → Ajustes → API. Acepta la clave v3 o el token v4. Se guarda solo en este dispositivo.</p>
@@ -558,7 +593,7 @@ const views = {
         <label style="display:block;margin-top:16px">Importar copia</label><input id="f-backup" type="file" accept=".json">
         <button class="btn yellow" data-act="import">📥 Importar</button></div>
       <div class="card"><h2>Zona peligrosa</h2><button class="btn pink" data-act="wipe">🗑️ Borrar todo</button></div>
-      <p class="muted" style="margin-top:20px">M3U Colorida v1.1 · Solo gestiona y reproduce listas que tú agregas.<br>Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.</p>`;
+      <p class="muted" style="margin-top:20px">M3U Colorida · Solo gestiona y reproduce listas que tú agregas.<br>Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.</p>`;
   }
 };
 
@@ -863,6 +898,22 @@ document.addEventListener('click', async (e) => {
       if (!(await pinOk($('#pc-cur').value.trim()))) return toast('PIN incorrecto', true);
       state.parental = null; ui.unlocked = false; save(); toast('Control parental desactivado'); render();
     }
+    else if (a === 'open-releases') window.open('https://github.com/' + REPO + '/releases/latest');
+    else if (a === 'upd-check') {
+      toast('Buscando actualización…');
+      await checkUpdate(); render();
+      toast(hasUpdate() ? '🆕 Hay una versión nueva' : '✅ Ya tienes la última versión');
+    }
+    else if (a === 'upd-install') {
+      const P = extPlugin();
+      if (!P || !P.installUpdate) throw new Error('Esta versión no puede actualizarse sola. Instala el APK manualmente una vez.');
+      toast('Descargando actualización… puede tardar un poco');
+      try { await P.installUpdate({ url: ui.update.url }); }
+      catch (e) {
+        if (/need_permission/.test(e.message || '')) toast('Activa "Permitir de esta fuente" para esta app y vuelve a pulsar Actualizar', true);
+        else throw e;
+      }
+    }
     else if (a === 'open-series') { ui.series = el.dataset.key; ui.view = 'series'; ui.q = ''; ui.group = 'all'; ui.limit = 120; render(); }
     else if (a === 'back-series') { ui.series = null; ui.limit = 120; render(); }
     else if (a === 'addtab') { ui.addTab = id; render(); }
@@ -934,4 +985,9 @@ document.addEventListener('input', (e) => {
   if (e.target.dataset.act === 'search') { ui.q = e.target.value; ui.limit = 120; render(); }
 });
 
-loadState().then(render);
+loadState().then(() => {
+  render();
+  if (isAndroid()) {
+    checkUpdate().then(() => { if (hasUpdate()) { toast('🆕 Hay una actualización: Ajustes → Actualizaciones'); if (ui.view === 'settings') render(); } }).catch(() => {});
+  }
+});

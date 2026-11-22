@@ -12,6 +12,7 @@ Gestor colorido de listas M3U para **Mac** (Electron) y **Android** (APK con Cap
 - **TMDB**: ficha con póster, sinopsis y puntuación (necesita tu clave gratis de themoviedb.org)
 - **Menú de reproductor** (Ajustes): Automático, ExoPlayer, Integrado, VLC, mpv, MX Player o Sistema (en Android)
 - Real-Debrid y TorBox: ver y reproducir lo que ya tienes en tus cuentas
+- **Actualizar desde la app** (Ajustes → Actualizaciones, Android): descarga e instala la última versión
 - **Control parental** con PIN: oculta canales, películas y series para adultos (Ajustes)
 
 *Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.*
