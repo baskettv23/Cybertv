@@ -64,3 +64,6 @@ En Películas y Series aparecen botones por plataforma (Netflix, Disney+, Prime 
 
 ## 🍅 Calificaciones
 Con una clave gratis de OMDb (Ajustes → Calificaciones), la ficha de cada película o serie muestra Rotten Tomatoes, IMDb y Metacritic.
+
+## 🖼️ Fondo de pósters
+Detrás de la app van cambiando solos pósters de las películas de tus listas. Se apaga en Ajustes → Fondo de pósters.

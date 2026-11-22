@@ -259,3 +259,12 @@ body.tv #zap { display: none; }
 .rt-b { padding: 6px 12px; border-radius: 20px; font-weight: 800; background: rgba(255,255,255,.1); }
 .rt-b.fresh { background: rgba(230,57,70,.25); color: #ff6b6b; }
 .rt-b.rotten { background: rgba(80,200,120,.2); color: #7ee2a0; }
+
+/* ---------- Fondo de pósters ---------- */
+#bgposters { position: fixed; inset: 0; z-index: 0; display: grid; grid-template-columns: repeat(8, 1fr); pointer-events: none; opacity: .2; filter: saturate(1.1); }
+#bgposters::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,.55)); }
+.bgp-tile { position: relative; overflow: hidden; }
+.bgp-img { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0; transition: opacity 1.5s ease; }
+.bgp-img.show, .bgp-img.cur { opacity: 1; }
+#app { position: relative; z-index: 1; }
+@media (max-width: 760px) { #bgposters { grid-template-columns: repeat(4, 1fr); } .bgp-tile:nth-child(n+5) { display: none; } }
