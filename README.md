@@ -61,3 +61,6 @@ Marcadores en vivo (NFL, NBA, MLB, Liga MX, MLS, Champions, LaLiga, Premier, NHL
 
 ## 🎞️ Por plataforma
 En Películas y Series aparecen botones por plataforma (Netflix, Disney+, Prime Video, HBO Max, Apple TV+, Paramount+, Hulu, Star+, Peacock, Crunchyroll) según el grupo o la etiqueta del título en tus listas.
+
+## 🍅 Calificaciones
+Con una clave gratis de OMDb (Ajustes → Calificaciones), la ficha de cada película o serie muestra Rotten Tomatoes, IMDb y Metacritic.

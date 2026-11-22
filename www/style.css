@@ -255,3 +255,7 @@ body.tv #zap { display: none; }
 .sp-chip span { opacity: .6; font-weight: 600; margin-left: 4px; }
 .sp-chip.on { background: rgba(34,211,238,.16); border-color: #22d3ee; color: #22d3ee; }
 @media (min-width: 900px) { .sp-big { flex-basis: 70%; } }
+.rt-box { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.rt-b { padding: 6px 12px; border-radius: 20px; font-weight: 800; background: rgba(255,255,255,.1); }
+.rt-b.fresh { background: rgba(230,57,70,.25); color: #ff6b6b; }
+.rt-b.rotten { background: rgba(80,200,120,.2); color: #7ee2a0; }

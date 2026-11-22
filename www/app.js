@@ -1056,7 +1056,7 @@ document.addEventListener('click', async (e) => {
     }
     else if (a === 'wipe') {
       if (parentalOn() && !ui.unlocked) return toast('Desbloquea el control parental primero', true);
-      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state.lists = []; state.favs.length = 0; state.hist = {}; state.dead = {}; state.debrid = { rd: '', tb: '' }; state.tmdb = ''; dd.rd = { user: null, items: [], files: {} }; dd.tb = { user: null, items: [], files: {} }; save(); render(); }
+      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state.lists = []; state.favs.length = 0; state.hist = {}; state.dead = {}; state.debrid = { rd: '', tb: '' }; state.tmdb = ''; state.omdb = ''; dd.rd = { user: null, items: [], files: {} }; dd.tb = { user: null, items: [], files: {} }; save(); render(); }
     }
   } catch (err) {
     toast('Error: ' + (err.message || err), true);
