@@ -410,7 +410,7 @@ function switchProfile(id) {
   ui.unlocked = false; ui.view = 'home'; ui.trend = null; ui.recs = null; ui.dfilter = '';
   saveMeta(); render();
 }
-NAV.splice(NAV.findIndex((n) => n[0] === 'favs') + 1, 0, ['history', '🕘 Historial', '#4895ef'], ['profiles', '👤 Perfiles', '#52b788']);
+NAV.splice(NAV.findIndex((n) => n[0] === 'settings') + 1, 0, ['history', '🕘 Historial', '#4895ef'], ['profiles', '👤 Perfiles', '#52b788']);
 
 /* ---------- Búsqueda por voz ---------- */
 const _search = views.search;

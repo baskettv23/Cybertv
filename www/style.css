@@ -211,3 +211,14 @@ body.tv input, body.tv select { font-size: 22px; padding: 14px; }
 body.tv :focus { outline: 4px solid #fff; outline-offset: 3px; transform: scale(1.04); z-index: 2; }
 body.tv :focus:not(:focus-visible) { outline: 4px solid #fff; }
 body.tv #zap { display: none; }
+
+/* Menú lateral con desplazamiento para que Ajustes siempre se alcance */
+@media (min-width: 761px) {
+  #nav { overflow-y: auto; }
+  .nav-item { flex-shrink: 0; }
+}
+@media (min-width: 761px) and (max-height: 820px) {
+  #nav { padding-top: 14px; gap: 5px; }
+  .nav-item { padding: 8px 12px; font-size: 14px; }
+  .brand { padding-bottom: 6px; }
+}
