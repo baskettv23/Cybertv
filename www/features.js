@@ -628,3 +628,18 @@ function afterBoot() {
   if ((state.profiles || []).length > 1) ui.view = 'profiles';
   if (state.epgAuto) setTimeout(() => loadEpg(true), 1500);
 }
+
+/* ---- Carga más tarjetas solas al llegar al final (la primera pantalla abre rápido) ---- */
+(function () {
+  let busy = false;
+  const grow = () => {
+    if (busy) return;
+    const v = $('#view');
+    if (!v || !v.querySelector('[data-act="more"]')) return;
+    if (v.scrollTop + v.clientHeight < v.scrollHeight - 400) return;
+    busy = true; ui.limit += 48; render();
+    setTimeout(() => { busy = false; }, 250);
+  };
+  const v = document.querySelector('#view');
+  if (v && v.addEventListener) v.addEventListener('scroll', grow, { passive: true });
+})();

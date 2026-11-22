@@ -64,7 +64,8 @@ async function persist(dropOld) {
 
 let saveChain = Promise.resolve();
 // save(): guarda todo (incluye las listas, que pesan). saveMeta(): solo ajustes, favoritos e historial (liviano).
-function save() { listsDirty = true; return saveMeta(); }
+let listsRev = 0;
+function save() { listsDirty = true; listsRev++; return saveMeta(); }
 function saveMeta() {
   syncProfile();
   saveChain = saveChain.then(() => persist()).catch((e) => toast('No se pudo guardar: ' + (e.message || e), true));
@@ -118,7 +119,7 @@ function deriveXmltv(url) {
   return '';
 }
 
-const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 120, series: null, dtab: 'rd', dinput: '', dfilter: '', gq: '', gkind: 'all', tmdbRes: [], tmdbFor: '' };
+const ui = { view: 'home', addTab: 'url', listId: 'all', q: '', group: 'all', limit: 48, series: null, dtab: 'rd', dinput: '', dfilter: '', gq: '', gkind: 'all', tmdbRes: [], tmdbFor: '' };
 let hls = null;
 
 const NAV = [
@@ -243,9 +244,28 @@ async function pinOk(pin) {
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden && ui.unlocked) { ui.unlocked = false; render(); } });
 
+// Se guarda el resultado mientras nada cambie (listas, perfil, PIN): abrir secciones es mucho más rápido.
+let _acKey = '', _acVal = null;
 function allChannels() {
+  const key = [listsRev, ui.listId, curKids() ? 1 : 0, ui.unlocked ? 1 : 0, parentalOn() ? 1 : 0, state.lists.map((l) => l.id + ':' + l.channels.length).join(',')].join('|');
+  if (key === _acKey && _acVal) return _acVal;
   const lists = ui.listId === 'all' ? state.lists : state.lists.filter((l) => l.id === ui.listId);
-  return lists.flatMap((l) => l.channels).filter(vis);
+  _acVal = lists.flatMap((l) => l.channels).filter(vis);
+  _acKey = key;
+  return _acVal;
+}
+// Filtra por tipo una sola vez por cada resultado de allChannels
+const _kindMemo = new WeakMap();
+function ofKind(arr, kind) {
+  let m = _kindMemo.get(arr);
+  if (!m) { m = {}; _kindMemo.set(arr, m); }
+  return m[kind] || (m[kind] = arr.filter((c) => kindOf(c) === kind));
+}
+const _groupMemo = new WeakMap();
+function groupsOf(arr) {
+  let g = _groupMemo.get(arr);
+  if (!g) { g = [...new Set(arr.map((c) => c.group).filter(Boolean))].sort(); _groupMemo.set(arr, g); }
+  return g;
 }
 
 // Clasifica cada entrada: live (canales), movie (películas) o series
@@ -267,7 +287,7 @@ const ICON = { live: '📺', movie: '🎬', series: '🍿' };
 function chCard(c) {
   const fav = state.favs.includes(c.url);
   const k = kindOf(c), ico = ICON[k];
-  const logo = c.logo ? `<img src="${esc(c.logo)}" loading="lazy" onerror="this.outerHTML='<div class=ph>${ico}</div>'">` : `<div class="ph">${ico}</div>`;
+  const logo = c.logo ? `<img src="${esc(c.logo)}" loading="lazy" decoding="async" onerror="this.outerHTML='<div class=ph>${ico}</div>'">` : `<div class="ph">${ico}</div>`;
   return `<div class="ch ${k === 'live' ? '' : 'poster'}">${logo}<div class="n">${esc(c.name)}</div><div class="g">${esc(c.group)}</div>
     <div class="row">
       <button class="btn green small" data-act="play" data-url="${esc(c.url)}" data-name="${esc(c.name)}">▶</button>
@@ -278,7 +298,7 @@ function chCard(c) {
 }
 
 function seriesCard(s) {
-  const logo = s.logo ? `<img src="${esc(s.logo)}" loading="lazy" onerror="this.outerHTML='<div class=ph>🍿</div>'">` : '<div class="ph">🍿</div>';
+  const logo = s.logo ? `<img src="${esc(s.logo)}" loading="lazy" decoding="async" onerror="this.outerHTML='<div class=ph>🍿</div>'">` : '<div class="ph">🍿</div>';
   return `<div class="ch poster">${logo}<div class="n">${esc(s.t)}</div><div class="g">${s.n} episodios</div>
     <div class="row"><button class="btn green small" data-act="open-series" data-key="${esc(s.t)}">Ver</button>
     <button class="btn yellow small" title="Buscar en Real-Debrid / TorBox" data-act="deb-find" data-name="${esc(s.t)}">⚡</button>
@@ -289,7 +309,7 @@ function browse(kind, favOnly) {
   const titles = { live: '📺 Canales', movie: '🎬 Películas', series: '🍿 Series' };
   const base = favOnly
     ? state.lists.flatMap((l) => l.channels).filter((c) => state.favs.includes(c.url) && vis(c))
-    : allChannels().filter((c) => kindOf(c) === kind);
+    : ofKind(allChannels(), kind);
   const more = (n) => (n > ui.limit ? '<button class="btn yellow" data-act="more">Mostrar más</button>' : '');
 
   // Detalle de una serie: sus episodios
@@ -300,7 +320,7 @@ function browse(kind, favOnly) {
       <p class="muted">${eps.length} episodios</p><div class="grid posters">${eps.slice(0, ui.limit).map(chCard).join('')}</div>${more(eps.length)}`;
   }
 
-  const groups = [...new Set(base.map((c) => c.group).filter(Boolean))].sort();
+  const groups = groupsOf(base);
   let chs = base;
   if (ui.group !== 'all') chs = chs.filter((c) => c.group === ui.group);
   if (ui.q) { const q = ui.q.toLowerCase(); chs = chs.filter((c) => c.name.toLowerCase().includes(q)); }
@@ -347,10 +367,12 @@ function extPlugin() {
   if (!C) return null;
   return (C.Plugins && C.Plugins.ExternalPlayer) || (C.registerPlugin && C.registerPlugin('ExternalPlayer')) || null;
 }
+// Para ExoPlayer el enlace directo (.ts) arranca más rápido que HLS; si falla, prueba los demás.
+function exoUrls(url) { const c = candidates(url); return [url, ...c.filter((x) => x !== url)]; }
 async function playExo(url, name, extra) {
   const P = extPlugin();
   if (!P || !P.playExo) { toast('ExoPlayer no está disponible en esta versión. Actualiza el APK.', true); return false; }
-  try { await P.playExo({ urls: candidates(url), title: name || '', ...(extra || {}) }); return true; }
+  try { await P.playExo({ urls: exoUrls(url), title: name || '', ...(extra || {}) }); return true; }
   catch (e) { toast('No se pudo abrir ExoPlayer: ' + (e.message || e), true); return false; }
 }
 async function playExternal(url, name, pkg) {
@@ -440,7 +462,7 @@ async function showInfo(name, kind) {
 function tmdbCard(r) {
   const t = r.title || r.name || '';
   const y = (r.release_date || r.first_air_date || '').slice(0, 4);
-  const img = r.poster_path ? `<img src="${IMG}w185${esc(r.poster_path)}" loading="lazy">` : '<div class="ph">🎬</div>';
+  const img = r.poster_path ? `<img src="${IMG}w185${esc(r.poster_path)}" loading="lazy" decoding="async">` : '<div class="ph">🎬</div>';
   return `<div class="ch poster">${img}<div class="n">${esc(t)}</div><div class="g">${r.media_type === 'tv' ? 'Serie' : 'Película'}${y ? ' · ' + y : ''}</div>
     <div class="row"><button class="btn pink small" data-act="tmdb-open" data-type="${r.media_type}" data-id="${r.id}">ℹ️ Ver</button></div></div>`;
 }
@@ -523,7 +545,7 @@ const views = {
       return out;
     };
     const tile = (c1, c2, num, label, imgs, ico, go) => `<div class="stat" style="--c1:${c1};--c2:${c2}" data-act="nav" data-id="${go}">
-      <div class="mosaic">${imgs.map((u) => `<img src="${esc(u)}" loading="lazy" onerror="this.remove()">`).join('')}</div>
+      <div class="mosaic">${imgs.map((u) => `<img src="${esc(u)}" loading="lazy" decoding="async" onerror="this.remove()">`).join('')}</div>
       <div class="shade"></div><span class="bg-ico">${ico}</span><b>${num}</b><span class="lbl">${label}</span></div>`;
     return `<h1>¡Bienvenido! 🎉</h1><p class="muted">Agrega tus listas M3U y míralas en un solo lugar.</p>
     <div class="grid">
@@ -902,7 +924,7 @@ document.addEventListener('click', async (e) => {
   const name = () => ($('#f-name') ? $('#f-name').value.trim() : '');
 
   try {
-    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 120; ui.series = null; ui.dfilter = ''; render(); if (id === 'search') { const f = $('#search'); if (f) f.focus(); } if (id === 'debrid' && deb()[ui.dtab] && !dd[ui.dtab].user) debridLoad(ui.dtab); }
+    if (a === 'nav') { ui.view = id; ui.q = ''; ui.group = 'all'; ui.limit = 48; ui.series = null; ui.dfilter = ''; render(); if (id === 'search') { const f = $('#search'); if (f) f.focus(); } if (id === 'debrid' && deb()[ui.dtab] && !dd[ui.dtab].user) debridLoad(ui.dtab); }
     else if (a === 'dtab') { ui.dtab = id; render(); if (deb()[id] && !dd[id].user) debridLoad(id); }
     else if (a === 'd-connect') {
       const v = ($('#d-token').value || '').trim();
@@ -933,11 +955,11 @@ document.addEventListener('click', async (e) => {
       if (a === 'd-play') play(url, dd[ui.dtab].files[key].list[i].name);
       else { await navigator.clipboard.writeText(url); toast('🔗 Enlace copiado'); }
     }
-    else if (a === 'gkind') { ui.gkind = id; ui.limit = 120; render(); }
+    else if (a === 'gkind') { ui.gkind = id; ui.limit = 48; render(); }
     else if (a === 'info') showInfo(el.dataset.name, el.dataset.kind);
     else if (a === 'tmdb-open') showTmdb(el.dataset.type, el.dataset.id);
     else if (a === 'close-info') closeInfo();
-    else if (a === 'info-search') { closeInfo(); ui.gq = el.dataset.title; ui.gkind = 'all'; ui.limit = 120; ui.view = 'search'; render(); }
+    else if (a === 'info-search') { closeInfo(); ui.gq = el.dataset.title; ui.gkind = 'all'; ui.limit = 48; ui.view = 'search'; render(); }
     else if (a === 'tmdb-search') {
       toast('Buscando en TMDB…');
       const d = await tmdb('/search/multi', { query: ui.gq });
@@ -994,8 +1016,8 @@ document.addEventListener('click', async (e) => {
         else throw e;
       }
     }
-    else if (a === 'open-series') { ui.series = el.dataset.key; ui.view = 'series'; ui.q = ''; ui.group = 'all'; ui.limit = 120; render(); }
-    else if (a === 'back-series') { ui.series = null; ui.limit = 120; render(); }
+    else if (a === 'open-series') { ui.series = el.dataset.key; ui.view = 'series'; ui.q = ''; ui.group = 'all'; ui.limit = 48; render(); }
+    else if (a === 'back-series') { ui.series = null; ui.limit = 48; render(); }
     else if (a === 'addtab') { ui.addTab = id; render(); }
     else if (a === 'add-url') {
       const url = $('#f-url').value.trim();
@@ -1071,8 +1093,8 @@ document.addEventListener('change', (e) => {
 const input = {};
 document.addEventListener('input', (e) => {
   if (e.target.dataset.act === 'dinput') ui.dinput = e.target.value;
-  if (e.target.dataset.act === 'gsearch') { ui.gq = e.target.value; ui.limit = 120; clearTimeout(input.t); input.t = setTimeout(render, 250); }
-  if (e.target.dataset.act === 'search') { ui.q = e.target.value; ui.limit = 120; render(); }
+  if (e.target.dataset.act === 'gsearch') { ui.gq = e.target.value; ui.limit = 48; clearTimeout(input.t); input.t = setTimeout(render, 250); }
+  if (e.target.dataset.act === 'search') { ui.q = e.target.value; ui.limit = 48; clearTimeout(input.s); input.s = setTimeout(render, 220); }
 });
 
 function boot() {

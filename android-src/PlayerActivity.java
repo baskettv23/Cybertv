@@ -16,6 +16,7 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.datasource.HttpDataSource;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -75,7 +76,10 @@ public class PlayerActivity extends Activity {
         setContentView(view);
         hideSystemUi();
 
-        player = new ExoPlayer.Builder(this).build();
+        // Empieza a reproducir con menos búfer (1 s en vez de 2.5 s) para que abra más rápido
+        player = new ExoPlayer.Builder(this)
+                .setLoadControl(new DefaultLoadControl.Builder().setBufferDurationsMs(15000, 50000, 1000, 2000).build())
+                .build();
         view.setPlayer(player);
         player.addListener(new Player.Listener() {
             @Override

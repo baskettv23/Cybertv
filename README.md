@@ -67,3 +67,6 @@ Con una clave gratis de OMDb (Ajustes → Calificaciones), la ficha de cada pel�
 
 ## 🖼️ Fondo de pósters
 Detrás de la app van cambiando solos pósters de las películas de tus listas. Se apaga en Ajustes → Fondo de pósters.
+
+## ⚡ Velocidad
+Las secciones guardan su resultado en memoria (abrir Canales, Películas y Series es casi instantáneo), cargan 48 tarjetas y siguen cargando solas al bajar, la búsqueda espera a que termines de escribir, y ExoPlayer arranca con menos búfer y prueba primero el enlace directo.
