@@ -378,7 +378,11 @@ function statsCard() {
 const _settings = views.settings;
 views.settings = function () {
   const h = _settings(), marker = '<div class="card"><h2>🔄 Actualizaciones</h2>';
-  return h.replace(marker, tvCard() + themeCard() + statsCard() + marker);
+  const i = h.indexOf(marker);
+  if (i < 0) return h + tvCard() + themeCard() + statsCard();
+  const j = h.indexOf('<div class="card">', i + marker.length);
+  const extra = tvCard() + themeCard() + statsCard();
+  return j < 0 ? h + extra : h.slice(0, j) + extra + h.slice(j);
 };
 
 /* ---------- Perfiles ---------- */
