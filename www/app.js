@@ -200,7 +200,7 @@ function addList(name, url, text) {
 /* ================= Render ================= */
 function navVisible(n) { return !(curKids() && ['add', 'lists', 'debrid', 'settings'].includes(n[0])); }
 function renderNav() {
-  $('#nav').innerHTML = '<div class="brand">📡 M3U Colorida</div>' + NAV.filter(navVisible).map(([id, label, c]) =>
+  $('#nav').innerHTML = '<div class="brand">📡 DANNYTV</div>' + NAV.filter(navVisible).map(([id, label, c]) =>
     `<button class="nav-item ${ui.view === id ? 'active' : ''}" style="--c:${c}" data-act="nav" data-id="${id}">${label}</button>`).join('');
 }
 
@@ -672,7 +672,7 @@ const views = {
         <label style="display:block;margin-top:16px">Importar copia</label><input id="f-backup" type="file" accept=".json">
         <button class="btn yellow" data-act="import">📥 Importar</button></div>
       <div class="card"><h2>Zona peligrosa</h2><button class="btn pink" data-act="wipe">🗑️ Borrar todo</button></div>
-      <p class="muted" style="margin-top:20px">M3U Colorida · Solo gestiona y reproduce listas que tú agregas.<br>Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.</p>`;
+      <p class="muted" style="margin-top:20px">DANNYTV · Solo gestiona y reproduce listas que tú agregas.<br>Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.</p>`;
   }
 };
 

@@ -1,4 +1,4 @@
-# 📡 M3U Colorida
+# 📡 DANNYTV
 
 Gestor colorido de listas M3U para **Mac** (Electron) y **Android** (APK con Capacitor). Una sola base de código en `www/`.
 
@@ -36,7 +36,7 @@ npm run dist:mac
 ```
 
 ## Generar el APK
-**Automático (recomendado):** sube el proyecto a GitHub. En la pestaña **Actions** se ejecuta el workflow y, al terminar, descargas el APK (`M3U-Colorida-apk`) desde *Artifacts*.
+**Automático (recomendado):** sube el proyecto a GitHub. En la pestaña **Actions** se ejecuta el workflow y, al terminar, descargas el APK (`DANNYTV-apk`) desde *Artifacts*.
 
 **Manual** (requiere Android Studio / JDK 17):
 ```bash

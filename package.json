@@ -1,6 +1,6 @@
 {
   "name": "m3u-colorida",
-  "productName": "M3U Colorida",
+  "productName": "DANNYTV",
   "version": "1.0.0",
   "description": "Gestor colorido de listas M3U para Mac y Android (APK)",
   "main": "main.js",
@@ -22,7 +22,7 @@
   },
   "build": {
     "appId": "com.m3u.colorida",
-    "productName": "M3U Colorida",
+    "productName": "DANNYTV",
     "files": ["main.js", "preload.js", "www/**/*"],
     "mac": { "category": "public.app-category.video", "target": ["dmg"] }
   }
