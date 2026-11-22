@@ -429,7 +429,14 @@ document.addEventListener('click', async (e) => {
   if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
   try {
-    if (a === 'set-tv') { state.tvMode = id; saveMeta(); applyTv(); render(); toast(id === 'on' ? '📺 Modo TV activado' : id === 'off' ? 'Modo TV apagado' : 'Modo TV automático'); }
+    if (a === 'player-menu') {
+      const android = isAndroid(), cur = state.player || 'auto';
+      const opts = PLAYERS.filter((x) => android || x[0] === 'auto' || x[0] === 'builtin').map((x) =>
+        `<div class="opt ${cur === x[0] ? 'sel' : ''}" data-act="pm-set" data-id="${x[0]}"><span class="radio"></span><div><b>${x[1]}</b><small>${x[2]}</small></div></div>`).join('');
+      setInfo(`<h2 class="center">⚙️ Reproductor</h2><p class="muted center">Se usa la próxima vez que abras un canal o película.</p>${opts}<button class="btn red small" data-act="close-info">✕ Cerrar</button>`);
+    }
+    else if (a === 'pm-set') { state.player = id; saveMeta(); closeInfo(); toast('Reproductor: ' + ((PLAYERS.find((x) => x[0] === id) || [])[1] || id)); }
+    else if (a === 'set-tv') { state.tvMode = id; saveMeta(); applyTv(); render(); toast(id === 'on' ? '📺 Modo TV activado' : id === 'off' ? 'Modo TV apagado' : 'Modo TV automático'); }
     else if (a === 'set-theme') { state.theme = id; applyTheme(); saveMeta(); render(); }
     else if (a === 'zap-prev') zap(-1);
     else if (a === 'zap-next') zap(1);
