@@ -75,3 +75,5 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk M3U-Colorida.apk
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest M3U-Colorida.apk --title "Última versión" --notes "APK compilado automáticamente (build $GITHUB_RUN_NUMBER)." --target "$GITHUB_SHA"
+          gh release edit latest --draft=false --latest
+          gh release view latest --json isDraft,tagName --jq '"borrador=" + (.isDraft|tostring)' | tee /dev/stderr | grep -q "borrador=false" || { echo "La release quedó como borrador"; exit 1; }
