@@ -44,6 +44,17 @@ jobs:
           sed -i 's#</application>#    <provider android:name=".UpdateFileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">\n            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />\n        </provider>\n    </application>#' $M
           grep -q REQUEST_INSTALL_PACKAGES $M || { echo "Falta el permiso de instalación"; cat $M; exit 1; }
           grep -q UpdateFileProvider $M || { echo "No se pudo registrar el proveedor de archivos"; cat $M; exit 1; }
+      - name: Modo TV (aparecer en Android TV y Fire TV)
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          mkdir -p android/app/src/main/res/drawable
+          cp android-src/tv_banner.png android/app/src/main/res/drawable/tv_banner.png
+          grep -q 'android.software.leanback' $M || sed -i 's#<application#<uses-feature android:name="android.software.leanback" android:required="false" />\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />\n    <application#' $M
+          grep -q LEANBACK_LAUNCHER $M || sed -i 's#<category android:name="android.intent.category.LAUNCHER" />#<category android:name="android.intent.category.LAUNCHER" />\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />#' $M
+          grep -q 'android:banner' $M || sed -i 's#<application#<application android:banner="@drawable/tv_banner"#' $M
+          grep -q LEANBACK_LAUNCHER $M || { echo "No se pudo agregar el lanzador de TV"; cat $M; exit 1; }
+          grep -q 'android:banner' $M || { echo "No se pudo agregar el banner"; cat $M; exit 1; }
+          grep -q 'android.software.leanback' $M || { echo "No se pudo declarar leanback"; cat $M; exit 1; }
       - name: Firma fija y versión creciente (para poder actualizar sin desinstalar)
         run: |
           cp cybertv.keystore android/app/cybertv.keystore

@@ -199,3 +199,15 @@ video { width: 100%; max-height: 72vh; background: #000; border-radius: 16px; }
 /* ===== Perfiles ===== */
 .pcard.cur { border-color: var(--green); box-shadow: 0 0 0 2px var(--green) inset; }
 .pcard .ph { font-size: 38px; }
+
+/* ---------- Modo TV ---------- */
+body.tv { font-size: 22px; }
+body.tv #nav { width: 300px; }
+body.tv #nav button, body.tv #nav a { font-size: 22px; padding: 16px 18px; }
+body.tv #view { padding: 48px 56px; }
+body.tv .btn, body.tv .tab, body.tv button { font-size: 20px; padding: 14px 22px; min-height: 56px; }
+body.tv .grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 22px; }
+body.tv input, body.tv select { font-size: 22px; padding: 14px; }
+body.tv :focus { outline: 4px solid #fff; outline-offset: 3px; transform: scale(1.04); z-index: 2; }
+body.tv :focus:not(:focus-visible) { outline: 4px solid #fff; }
+body.tv #zap { display: none; }

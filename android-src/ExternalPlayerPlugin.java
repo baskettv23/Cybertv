@@ -1,9 +1,11 @@
 package com.m3u.colorida;
 
 import android.app.Activity;
+import android.app.UiModeManager;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
@@ -143,6 +145,21 @@ public class ExternalPlayerPlugin extends Plugin {
         } else {
             call.reject("cancelado");
         }
+    }
+
+    /** Dice si la app corre en un Android TV / Fire TV. */
+    @PluginMethod
+    public void isTv(PluginCall call) {
+        boolean tv = false;
+        try {
+            UiModeManager um = (UiModeManager) getContext().getSystemService(Context.UI_MODE_SERVICE);
+            tv = um != null && um.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
+            if (!tv) tv = getContext().getPackageManager().hasSystemFeature("android.software.leanback");
+        } catch (Exception ignored) {
+        }
+        JSObject ret = new JSObject();
+        ret.put("tv", tv);
+        call.resolve(ret);
     }
 
     /** Devuelve el versionCode instalado (coincide con el número de build). */

@@ -378,7 +378,7 @@ function statsCard() {
 const _settings = views.settings;
 views.settings = function () {
   const h = _settings(), marker = '<div class="card"><h2>🔄 Actualizaciones</h2>';
-  return h.replace(marker, themeCard() + statsCard() + marker);
+  return h.replace(marker, tvCard() + themeCard() + statsCard() + marker);
 };
 
 /* ---------- Perfiles ---------- */
@@ -429,7 +429,8 @@ document.addEventListener('click', async (e) => {
   if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
   try {
-    if (a === 'set-theme') { state.theme = id; applyTheme(); saveMeta(); render(); }
+    if (a === 'set-tv') { state.tvMode = id; saveMeta(); applyTv(); render(); toast(id === 'on' ? '📺 Modo TV activado' : id === 'off' ? 'Modo TV apagado' : 'Modo TV automático'); }
+    else if (a === 'set-theme') { state.theme = id; applyTheme(); saveMeta(); render(); }
     else if (a === 'zap-prev') zap(-1);
     else if (a === 'zap-next') zap(1);
     else if (a === 'next-now') { clearInterval(nextTimer); if (ctx && ctx.kind === 'series' && ctx.i + 1 < ctx.items.length) { const n = ctx.items[ctx.i + 1]; play(n.url, n.name); } }
@@ -471,8 +472,148 @@ document.addEventListener('click', async (e) => {
   } catch (err) { toast('Error: ' + (err.message || err), true); }
 });
 
+
+/* ================= Modo TV (Android TV / Fire TV, control remoto) ================= */
+function tvOn() {
+  const m = state.tvMode || 'auto';
+  return m === 'on' || (m === 'auto' && !!ui.tvAuto);
+}
+function applyTv() {
+  if (document.body) document.body.classList.toggle('tv', tvOn());
+}
+async function detectTv() {
+  try {
+    const P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.ExternalPlayer;
+    if (P && P.isTv) { const r = await P.isTv(); ui.tvAuto = !!(r && r.tv); }
+  } catch (e) {}
+  applyTv();
+  if (tvOn()) { render(); }
+}
+function tvCard() {
+  const m = state.tvMode || 'auto';
+  const b = (id, t) => `<button class="tab ${m === id ? 'active' : ''}" data-act="set-tv" data-id="${id}">${t}</button>`;
+  return `<div class="card"><h2>📺 Modo TV</h2><p class="muted">Para usar con control remoto: botones grandes y navegación con flechas. Automático lo activa solo en Android TV y Fire TV.</p>
+    <div class="tabs">${b('auto', 'Automático')}${b('on', 'Siempre')}${b('off', 'Nunca')}</div></div>`;
+}
+
+// Elige el siguiente elemento en la dirección pedida (geometría en pantalla)
+function pickNext(cur, cands, dir) {
+  const cx = cur.left + cur.width / 2, cy = cur.top + cur.height / 2;
+  let best = null, bs = Infinity;
+  for (const c of cands) {
+    const r = c.rect;
+    if (r === cur) continue;
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    let p, q;
+    if (dir === 'right') { if (r.left + r.width / 2 <= cx + 1) continue; p = x - cx; q = Math.abs(y - cy); }
+    else if (dir === 'left') { if (x >= cx - 1) continue; p = cx - x; q = Math.abs(y - cy); }
+    else if (dir === 'down') { if (y <= cy + 1) continue; p = y - cy; q = Math.abs(x - cx); }
+    else { if (y >= cy - 1) continue; p = cy - y; q = Math.abs(x - cx); }
+    const sc = p + 2.5 * q;
+    if (sc < bs) { bs = sc; best = c; }
+  }
+  return best;
+}
+
+function tvScope() {
+  const info = $('#info');
+  if (info && !info.classList.contains('hidden')) return info;
+  return null;
+}
+function tvFocusables() {
+  const scope = tvScope();
+  const roots = scope ? [scope] : [$('#nav'), $('#view')];
+  const out = [];
+  for (const r of roots) {
+    if (!r) continue;
+    r.querySelectorAll('button, a[href], input, select, textarea, [data-act], [tabindex]').forEach((el) => {
+      if (el.disabled || el.tabIndex < 0 && el.tagName !== 'BUTTON') return;
+      const rc = el.getBoundingClientRect();
+      if (rc.width < 2 || rc.height < 2) return;
+      out.push({ el, rect: rc });
+    });
+  }
+  return out;
+}
+function tvKey(el) {
+  if (!el || !el.dataset) return '';
+  return [el.dataset.act, el.dataset.id, el.dataset.url, el.id].join('|');
+}
+function tvFocusFirst(prefKey) {
+  const list = tvFocusables();
+  if (!list.length) return;
+  let t = prefKey ? list.find((c) => tvKey(c.el) === prefKey && prefKey !== '|||') : null;
+  if (!t) t = list.find((c) => $('#view') && $('#view').contains(c.el)) || list[0];
+  t.el.focus({ preventScroll: false });
+  if (t.el.scrollIntoView) t.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+// Atrás con el control remoto: cierra el reproductor/ficha, luego vuelve a la pantalla anterior
+const viewStack = [];
+let ignorePop = false;
+function playerOpen() { const p = $('#player'); return p && !p.classList.contains('hidden'); }
+function infoOpen() { const p = $('#info'); return p && !p.classList.contains('hidden'); }
+const _renderBase = render;
+render = function () {
+  const prevKey = document.activeElement && document.activeElement !== document.body ? tvKey(document.activeElement) : '';
+  const wasView = viewStack[viewStack.length - 1];
+  _renderBase();
+  if (tvOn()) {
+    document.querySelectorAll('#view [data-act]:not(button):not(input):not(select):not(textarea)').forEach((el) => { if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0'); });
+    if (!document.activeElement || document.activeElement === document.body || !document.body.contains(document.activeElement)) tvFocusFirst(prevKey);
+    else if (wasView !== ui.view) tvFocusFirst('');
+  }
+  if (wasView !== ui.view) {
+    viewStack.push(ui.view);
+    try { history.pushState({ v: ui.view }, ''); } catch (e) {}
+  }
+};
+if (window.addEventListener) window.addEventListener('popstate', () => {
+  if (ignorePop) { ignorePop = false; return; }
+  if (playerOpen()) { stop(); closePlayerUi(); }
+  else if (infoOpen()) closeInfo();
+  else if (viewStack.length > 1) { viewStack.pop(); ui.view = viewStack[viewStack.length - 1]; viewStack.pop(); render(); }
+  else { try { history.back(); } catch (e) {} }
+  if (playerOpen() || infoOpen()) { try { history.pushState({ keep: 1 }, ''); } catch (e) {} }
+});
+function closePlayerUi() { const p = $('#player'); if (p) p.classList.add('hidden'); }
+
+document.addEventListener('keydown', (e) => {
+  if (!tvOn()) return;
+  const k = e.key;
+  const dir = { ArrowRight: 'right', ArrowLeft: 'left', ArrowDown: 'down', ArrowUp: 'up' }[k];
+  const v = $('#video');
+  if (playerOpen()) {
+    if (k === 'Escape' || k === 'Backspace') { e.preventDefault(); stop(); closePlayerUi(); return; }
+    const live = ctx && ctx.kind === 'live' || (v && !isFinite(v.duration));
+    if (dir === 'up') { e.preventDefault(); if (ctx) zap(-1); }
+    else if (dir === 'down') { e.preventDefault(); if (ctx) zap(1); }
+    else if (dir === 'left' && v && !live) { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime - 10); }
+    else if (dir === 'right' && v && !live) { e.preventDefault(); v.currentTime = v.currentTime + 10; }
+    else if ((k === 'Enter' || k === ' ' || k === 'MediaPlayPause') && v && document.activeElement && document.activeElement.tagName !== 'BUTTON') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+    return;
+  }
+  const ae = document.activeElement;
+  const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') ;
+  if (k === 'Escape' && infoOpen()) { e.preventDefault(); closeInfo(); return; }
+  if (dir) {
+    if (typing && (dir === 'left' || dir === 'right')) return;
+    const list = tvFocusables();
+    if (!list.length) return;
+    const curItem = list.find((c) => c.el === ae);
+    if (!curItem) { e.preventDefault(); tvFocusFirst(''); return; }
+    const nx = pickNext(curItem.rect, list, dir);
+    if (nx) { e.preventDefault(); nx.el.focus(); nx.el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+    else if (dir === 'down' || dir === 'up') { /* deja que la página se desplace */ }
+    else e.preventDefault();
+  } else if (k === 'Enter' && ae && ae.dataset && ae.dataset.act && ae.tagName !== 'BUTTON' && ae.tagName !== 'INPUT') {
+    e.preventDefault(); ae.click();
+  }
+});
+
 function afterBoot() {
   applyTheme();
+  detectTv();
   if ((state.profiles || []).length > 1) ui.view = 'profiles';
   if (state.epgAuto) setTimeout(() => loadEpg(true), 1500);
 }

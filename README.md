@@ -52,3 +52,6 @@ Esta app solo gestiona y reproduce las listas que tú agregas; no incluye conten
 
 ## Actualizar sin desinstalar
 Cada compilación se firma con la misma llave (`cybertv.keystore`) y sube su número de versión, así que el APK nuevo se instala **encima** del anterior y conserva tus listas. El APK más reciente siempre está en **Releases → Última versión**.
+
+## 📺 Modo TV (Android TV / Fire TV)
+El APK aparece en el menú de apps de la tele con su banner. Se maneja con el control remoto: flechas para moverte, OK para elegir, Atrás para volver. En el reproductor: ▲/▼ cambia de canal, ◀/▶ salta 10 s en películas. Se activa solo en TV; también puedes forzarlo en Ajustes → Modo TV.
