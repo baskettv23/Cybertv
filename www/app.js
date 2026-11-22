@@ -138,9 +138,48 @@ function renderNav() {
     `<button class="nav-item ${ui.view === id ? 'active' : ''}" style="--c:${c}" data-act="nav" data-id="${id}">${label}</button>`).join('');
 }
 
+/* ================= Control parental ================= */
+const ADULT_WORDS = /\b(xxx|porn\w*|erotic\w*|er[oó]tic\w*|hentai|playboy|hustler|brazzers|penthouse|onlyfans|nsfw|para adultos|adults? only|solo adultos|contenido adulto)\b/i;
+const ADULT_PLUS = /\+\s?18|18\s?\+/;
+const ADULT_GROUP = /\b(adult[oa]?s?|sex\w*)\b/i; // solo se aplica al nombre del grupo, no al título
+const adultCache = new WeakMap();
+function isAdult(c) {
+  let v = adultCache.get(c);
+  if (v === undefined) {
+    const g = c.group || '', n = c.name || '';
+    v = !/adult swim/i.test(g + ' ' + n) &&
+      (ADULT_WORDS.test(g) || ADULT_WORDS.test(n) || ADULT_PLUS.test(g) || ADULT_PLUS.test(n) || ADULT_GROUP.test(g));
+    adultCache.set(c, v);
+  }
+  return v;
+}
+const parentalOn = () => !!(state.parental && state.parental.on);
+const vis = (c) => !parentalOn() || ui.unlocked || !isAdult(c);
+function hiddenCount() { let n = 0; for (const l of state.lists) for (const c of l.channels) if (isAdult(c)) n++; return n; }
+
+async function pinHash(pin, salt) {
+  const data = new TextEncoder().encode(salt + ':' + pin);
+  if (window.crypto && crypto.subtle) {
+    const b = await crypto.subtle.digest('SHA-256', data);
+    return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+  let h = 5381; for (const x of data) h = ((h << 5) + h + x) >>> 0; // respaldo si no hay crypto.subtle
+  return 'f' + h.toString(16);
+}
+let pcFails = 0, pcLock = 0;
+async function pinOk(pin) {
+  if (Date.now() < pcLock) throw new Error('Demasiados intentos. Espera ' + Math.ceil((pcLock - Date.now()) / 1000) + ' s');
+  const p = state.parental;
+  const ok = !!p && (await pinHash(String(pin || ''), p.salt)) === p.hash;
+  if (ok) { pcFails = 0; return true; }
+  if (++pcFails >= 5) { pcFails = 0; pcLock = Date.now() + 60000; }
+  return false;
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden && ui.unlocked) { ui.unlocked = false; render(); } });
+
 function allChannels() {
   const lists = ui.listId === 'all' ? state.lists : state.lists.filter((l) => l.id === ui.listId);
-  return lists.flatMap((l) => l.channels);
+  return lists.flatMap((l) => l.channels).filter(vis);
 }
 
 // Clasifica cada entrada: live (canales), movie (películas) o series
@@ -183,7 +222,7 @@ function seriesCard(s) {
 function browse(kind, favOnly) {
   const titles = { live: '📺 Canales', movie: '🎬 Películas', series: '🍿 Series' };
   const base = favOnly
-    ? state.lists.flatMap((l) => l.channels).filter((c) => state.favs.includes(c.url))
+    ? state.lists.flatMap((l) => l.channels).filter((c) => state.favs.includes(c.url) && vis(c))
     : allChannels().filter((c) => kindOf(c) === kind);
   const more = (n) => (n > ui.limit ? '<button class="btn yellow" data-act="more">Mostrar más</button>' : '');
 
@@ -336,14 +375,35 @@ function tmdbCard(r) {
 const normCache = new WeakMap();
 const normName = (c) => { let n = normCache.get(c); if (n === undefined) { n = nrm(c.name); normCache.set(c, n); } return n; };
 
+function parentalCard() {
+  const num = 'type="password" inputmode="numeric" autocomplete="off" maxlength="8"';
+  if (!parentalOn()) {
+    return `<p class="muted">Oculta los canales, películas y series para adultos (XXX, +18, Adultos…) detrás de un PIN. Se oculta en Canales, Películas, Series, Favoritos y el buscador.</p>
+      <input id="pc-pin" ${num} placeholder="Crea un PIN (4 a 8 números)">
+      <input id="pc-pin2" ${num} placeholder="Repite el PIN">
+      <button class="btn green" data-act="pc-enable">🔒 Activar</button>`;
+  }
+  return `<p class="muted">${ui.unlocked ? '🔓 Desbloqueado temporalmente (se bloquea al salir de la app).' : '🔒 Activado'} · ${hiddenCount()} elementos adultos en tus listas.</p>
+    <input id="pc-cur" ${num} placeholder="PIN actual">
+    ${ui.unlocked ? '<button class="btn yellow" data-act="pc-lock">🔒 Bloquear ahora</button>' : '<button class="btn green" data-act="pc-unlock">🔓 Desbloquear</button>'}
+    <button class="btn pink" data-act="pc-disable">Desactivar</button>
+    <details style="margin-top:12px"><summary class="muted">Cambiar PIN</summary>
+      <input id="pc-pin" ${num} placeholder="PIN nuevo (4 a 8 números)">
+      <input id="pc-pin2" ${num} placeholder="Repite el PIN nuevo">
+      <button class="btn yellow" data-act="pc-change">Guardar PIN nuevo</button></details>`;
+}
+
 const views = {
   home() {
     const cnt = { live: 0, movie: 0, series: 0 };
     const seriesSet = new Set();
     const pics = { live: [], movie: [], series: [] };
     const favPics = [];
+    let favN = 0;
     state.lists.forEach((l) => l.channels.forEach((c) => {
+      if (!vis(c)) return;
       const k = kindOf(c);
+      if (state.favs.includes(c.url)) favN++;
       if (k === 'series') seriesSet.add(seriesTitle(c.name)); else cnt[k]++;
       if (c.logo) { pics[k].push(c.logo); if (state.favs.includes(c.url)) favPics.push(c.logo); }
     }));
@@ -363,7 +423,7 @@ const views = {
       ${tile('#06d6a0', '#4cc9f0', cnt.live, 'Canales', pick(pics.live, 4), '📺', 'channels')}
       ${tile('#ff9e00', '#ff4d6d', cnt.movie, 'Películas', pick(pics.movie, 4), '🎬', 'movies')}
       ${tile('#8338ec', '#f72585', cnt.series, 'Series', pick(pics.series, 4), '🍿', 'series')}
-      ${tile('#ffb703', '#fb8500', state.favs.length, 'Favoritos', pick(favPics, 4), '⭐', 'favs')}
+      ${tile('#ffb703', '#fb8500', favN, 'Favoritos', pick(favPics, 4), '⭐', 'favs')}
     </div>
     <button class="btn pink" data-act="nav" data-id="add">➕ Agregar mi primera lista</button>
     <button class="btn green" data-act="nav" data-id="channels">📺 Ver canales</button>`;
@@ -442,6 +502,7 @@ const views = {
     const found = { live: [], movie: [], series: [] };
     if (q.length >= 2) {
       for (const l of state.lists) for (const c of l.channels) {
+        if (!vis(c)) continue;
         const n = normName(c);
         if (words.every((w) => n.includes(w))) found[kindOf(c)].push(c);
       }
@@ -487,6 +548,7 @@ const views = {
         <p class="muted" style="margin-top:12px">${android
           ? 'VLC, mpv y MX Player se abren como apps aparte: instálalos desde Play Store. Si no está instalado, se abre el selector del sistema.'
           : 'En la app de Android también puedes elegir VLC, mpv o MX Player.'}</p></div>
+      <div class="card"><h2>🔒 Control parental</h2>${parentalCard()}</div>
       <div class="card"><h2>🎞️ TMDB (información de películas y series)</h2>
         <p class="muted">Clave gratis en themoviedb.org → Ajustes → API. Acepta la clave v3 o el token v4. Se guarda solo en este dispositivo.</p>
         <input id="tmdb-key" type="password" placeholder="Pega tu clave de TMDB" autocomplete="off" value="${esc(state.tmdb || '')}">
@@ -783,6 +845,24 @@ document.addEventListener('click', async (e) => {
       stop(); $('#player').classList.add('hidden');
       playExternal(lastPlay.url, lastPlay.name, pkg || 'org.videolan.vlc');
     }
+    else if (a === 'pc-enable' || a === 'pc-change') {
+      if (a === 'pc-change' && !(await pinOk($('#pc-cur').value.trim()))) return toast('PIN actual incorrecto', true);
+      const p1 = $('#pc-pin').value.trim(), p2 = $('#pc-pin2').value.trim();
+      if (!/^\d{4,8}$/.test(p1)) return toast('El PIN debe tener de 4 a 8 números', true);
+      if (p1 !== p2) return toast('Los PIN no coinciden', true);
+      const salt = uid();
+      state.parental = { on: true, salt, hash: await pinHash(p1, salt) };
+      ui.unlocked = false; save(); toast('🔒 PIN guardado'); render();
+    }
+    else if (a === 'pc-unlock') {
+      if (!(await pinOk($('#pc-cur').value.trim()))) return toast('PIN incorrecto', true);
+      ui.unlocked = true; toast('🔓 Desbloqueado'); render();
+    }
+    else if (a === 'pc-lock') { ui.unlocked = false; toast('🔒 Bloqueado'); render(); }
+    else if (a === 'pc-disable') {
+      if (!(await pinOk($('#pc-cur').value.trim()))) return toast('PIN incorrecto', true);
+      state.parental = null; ui.unlocked = false; save(); toast('Control parental desactivado'); render();
+    }
     else if (a === 'open-series') { ui.series = el.dataset.key; ui.view = 'series'; ui.q = ''; ui.group = 'all'; ui.limit = 120; render(); }
     else if (a === 'back-series') { ui.series = null; ui.limit = 120; render(); }
     else if (a === 'addtab') { ui.addTab = id; render(); }
@@ -831,10 +911,11 @@ document.addEventListener('click', async (e) => {
       if (!f) return toast('Elige un archivo .json', true);
       const d = JSON.parse(await f.text());
       if (!Array.isArray(d.lists)) throw new Error('Archivo inválido');
-      state = { lists: d.lists, favs: d.favs || [], debrid: deb(), player: state.player, tmdb: state.tmdb }; save(); toast('Importado ✅'); render();
+      state = { lists: d.lists, favs: d.favs || [], debrid: deb(), player: state.player, tmdb: state.tmdb, parental: state.parental }; save(); toast('Importado ✅'); render();
     }
     else if (a === 'wipe') {
-      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state = { lists: [], favs: [], debrid: { rd: '', tb: '' }, player: state.player }; dd.rd = { user: null, items: [], files: {} }; dd.tb = { user: null, items: [], files: {} }; save(); render(); }
+      if (parentalOn() && !ui.unlocked) return toast('Desbloquea el control parental primero', true);
+      if (confirm('¿Borrar TODAS las listas y favoritos?')) { state = { lists: [], favs: [], debrid: { rd: '', tb: '' }, player: state.player, parental: state.parental }; dd.rd = { user: null, items: [], files: {} }; dd.tb = { user: null, items: [], files: {} }; save(); render(); }
     }
   } catch (err) {
     toast('Error: ' + (err.message || err), true);
