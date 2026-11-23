@@ -200,28 +200,34 @@ video { width: 100%; max-height: 72vh; background: #000; border-radius: 16px; }
 .pcard.cur { border-color: var(--green); box-shadow: 0 0 0 2px var(--green) inset; }
 .pcard .ph { font-size: 38px; }
 
-/* ---------- Modo TV ---------- */
-body.tv { font-size: 22px; }
-body.tv #nav { width: 300px; }
-body.tv #nav button, body.tv #nav a { font-size: 22px; padding: 16px 18px; }
-body.tv #view { padding: 48px 56px; }
-body.tv .btn, body.tv .tab, body.tv button { font-size: 20px; padding: 14px 22px; min-height: 56px; }
-body.tv .grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 22px; }
-body.tv input, body.tv select { font-size: 22px; padding: 14px; }
-body.tv :focus { outline: 4px solid #fff; outline-offset: 3px; transform: scale(1.04); z-index: 2; }
-body.tv :focus:not(:focus-visible) { outline: 4px solid #fff; }
+/* ---------- Modo TV (todo se ajusta al ancho real de la pantalla) ---------- */
+body.tv { font-size: clamp(13px, 1.35vw, 22px); --tvu: clamp(13px, 1.35vw, 22px); }
+body.tv #nav { width: clamp(170px, 19vw, 290px); padding: 14px 10px; gap: 6px; overflow-y: auto; }
+body.tv #nav .brand { font-size: 1.5em; padding: 2px 8px 8px; }
+body.tv .nav-item { font-size: 1.05em; padding: .55em .8em; border-radius: 12px; }
+body.tv #view { padding: 3vh 3vw; }
+body.tv h1 { font-size: 1.9em; }
+body.tv h2 { font-size: 1.35em; }
+body.tv .btn, body.tv .tab { font-size: 1em; padding: .5em 1em; min-height: 2.4em; }
+body.tv .btn.small { font-size: .95em; padding: .35em .8em; min-height: 2.1em; }
+body.tv .grid { grid-template-columns: repeat(auto-fill, minmax(clamp(120px, 12vw, 200px), 1fr)); gap: 1.2vw; }
+body.tv .grid.posters { grid-template-columns: repeat(auto-fill, minmax(clamp(110px, 10.5vw, 180px), 1fr)); }
+body.tv .ch .n { font-size: .95em; }
+body.tv .ch .row { gap: 6px; flex-wrap: wrap; justify-content: center; }
+body.tv .ch .row .btn { padding: .3em .7em; min-height: 2em; }
+body.tv input, body.tv select { font-size: 1em; padding: .6em .8em; }
+body.tv .sp-chip { font-size: 1em; padding: .5em 1em; }
+body.tv .stat { min-height: 0; }
+body.tv .ch.poster img { height: clamp(150px, 15vw, 250px); }
+body.tv .ch.poster .ph { height: clamp(150px, 15vw, 250px); line-height: clamp(150px, 15vw, 250px); }
+body.tv .ch img { width: clamp(48px, 5vw, 80px); height: clamp(48px, 5vw, 80px); }
+body.tv .ch.poster img { width: 100%; }
+body.tv .stat { min-height: clamp(90px, 9vw, 150px); }
+body.tv .stat b { font-size: 2.2em; }
+body.tv .stat .bg-ico { font-size: 2.4em; }
+body.tv .hrow .ch { min-width: clamp(120px, 11vw, 190px); }
+body.tv :focus { outline: 3px solid #fff; outline-offset: 2px; transform: scale(1.04); z-index: 2; }
 body.tv #zap { display: none; }
-
-/* Menú lateral con desplazamiento para que Ajustes siempre se alcance */
-@media (min-width: 761px) {
-  #nav { overflow-y: auto; }
-  .nav-item { flex-shrink: 0; }
-}
-@media (min-width: 761px) and (max-height: 820px) {
-  #nav { padding-top: 14px; gap: 5px; }
-  .nav-item { padding: 8px 12px; font-size: 14px; }
-  .brand { padding-bottom: 6px; }
-}
 
 /* ---------- Zona Deportes ---------- */
 .sp-car { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 2px; }
