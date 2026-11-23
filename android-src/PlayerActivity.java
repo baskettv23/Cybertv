@@ -1,6 +1,8 @@
 package com.m3u.colorida;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.app.PictureInPictureParams;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
@@ -168,7 +170,7 @@ public class PlayerActivity extends Activity {
 
     private String hint(int code) {
         if (code == 401 || code == 403) {
-            return "El servidor rechazó la conexión. Revisa que tu lista siga activa y que no tengas otra conexión abierta en otro aparato.";
+            return "El servidor rechazó la conexión. Casi siempre es porque la misma lista ya está abierta en otro aparato (la tablet, el celular…) y tu proveedor solo permite una conexión a la vez, o porque la lista venció. Cierra la reproducción en el otro aparato y reintenta.";
         }
         if (code == 404) {
             return "Ese canal o archivo no existe en el servidor (puede estar caído).";
@@ -188,6 +190,20 @@ public class PlayerActivity extends Activity {
         String what = lastCode > 0 ? "El servidor respondió HTTP " + lastCode : lastError;
         String msg = "No se pudo reproducir.\n" + what + (host != null ? " (" + host + ")" : "") + "\n" + hint(lastCode);
         view.setCustomErrorMessage(msg);
+        // El cuadro del reproductor corta el texto en pantallas de TV: se muestra completo en un aviso
+        try {
+            new AlertDialog.Builder(this)
+                    .setTitle("No se pudo reproducir")
+                    .setMessage(msg.replace("No se pudo reproducir.\n", "") + "\n\nCódigo: " + (lastCode > 0 ? lastCode : lastError))
+                    .setPositiveButton("Cerrar", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface d, int w) {
+                            finish();
+                        }
+                    })
+                    .show();
+        } catch (Exception ignored) {
+        }
     }
 
     /** Guarda dónde se quedó (solo películas y episodios, no canales en vivo). */
