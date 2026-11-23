@@ -645,6 +645,28 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+/* ---- En la TV los menús desplegables (<select>) no abren con OK: se muestra una lista propia ---- */
+let tvSelEl = null;
+function tvOpenSelect(sel) {
+  tvSelEl = sel;
+  const cur = sel.value;
+  const rows = [...sel.options].map((o, i) => `<div class="opt ${o.value === cur ? 'sel' : ''}" data-act="tv-pick" data-id="${i}"><span class="radio"></span><div><b>${esc(o.textContent)}</b></div></div>`).join('');
+  setInfo(`<h2 class="center">Elige una opción</h2>${rows}<button class="btn red small" data-act="close-info">✕ Cerrar</button>`);
+  const f = document.querySelector('#info .opt.sel');
+  if (f && f.focus) { f.focus(); if (f.scrollIntoView) f.scrollIntoView({ block: 'center' }); }
+}
+document.addEventListener('click', (e) => {
+  if (!tvOn()) return;
+  const sel = e.target && e.target.closest && e.target.closest('select');
+  if (sel) { e.preventDefault(); e.stopPropagation(); tvOpenSelect(sel); return; }
+  const pick = e.target && e.target.closest && e.target.closest('[data-act="tv-pick"]');
+  if (pick && tvSelEl) {
+    const o = tvSelEl.options[+pick.dataset.id];
+    if (o) { tvSelEl.value = o.value; tvSelEl.dispatchEvent(new Event('change', { bubbles: true })); }
+    tvSelEl = null; closeInfo();
+  }
+}, true);
+
 function afterBoot() {
   applyTheme();
   detectTv();
