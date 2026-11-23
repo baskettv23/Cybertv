@@ -538,9 +538,10 @@ function tvFocusables() {
   for (const r of roots) {
     if (!r) continue;
     r.querySelectorAll('button, a[href], input, select, textarea, [data-act], [tabindex]').forEach((el) => {
-      if (el.disabled || el.tabIndex < 0 && el.tagName !== 'BUTTON') return;
+      if (el.disabled) return;
       const rc = el.getBoundingClientRect();
       if (rc.width < 2 || rc.height < 2) return;
+      if (el.tabIndex < 0 && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
       out.push({ el, rect: rc });
     });
   }
@@ -561,7 +562,7 @@ function tvFocusFirst(prefKey) {
 
 // Atrás con el control remoto: cierra el reproductor/ficha, luego vuelve a la pantalla anterior
 const viewStack = [];
-let ignorePop = false;
+let ignorePop = 0;
 function playerOpen() { const p = $('#player'); return p && !p.classList.contains('hidden'); }
 function infoOpen() { const p = $('#info'); return p && !p.classList.contains('hidden'); }
 const _renderBase = render;
@@ -579,14 +580,36 @@ render = function () {
     try { history.pushState({ v: ui.view }, ''); } catch (e) {}
   }
 };
+let ovDepth = 0;
+const ovCount = () => (playerOpen() ? 1 : 0) + (infoOpen() ? 1 : 0);
 if (window.addEventListener) window.addEventListener('popstate', () => {
-  if (ignorePop) { ignorePop = false; return; }
+  if (ignorePop > 0) { ignorePop--; return; }
   if (playerOpen()) { stop(); closePlayerUi(); }
   else if (infoOpen()) closeInfo();
   else if (viewStack.length > 1) { viewStack.pop(); ui.view = viewStack[viewStack.length - 1]; viewStack.pop(); render(); }
   else { try { history.back(); } catch (e) {} }
-  if (playerOpen() || infoOpen()) { try { history.pushState({ keep: 1 }, ''); } catch (e) {} }
+  ovDepth = ovCount();
 });
+// Cada ventana emergente (reproductor, fichas, listas de canales) usa un paso del historial: Atrás la cierra
+function ovSync() {
+  if (!tvOn()) { ovDepth = ovCount(); return; }
+  const n = ovCount();
+  while (ovDepth < n) { try { history.pushState({ ov: 1 }, ''); } catch (e) {} ovDepth++; }
+  while (ovDepth > n) { ovDepth--; ignorePop++; try { history.back(); } catch (e) { ignorePop--; } }
+  if (infoOpen()) tvPrepInfo();
+}
+function tvPrepInfo() {
+  const el = $('#info');
+  if (!el || !tvOn()) return;
+  el.querySelectorAll('[data-act]:not(button):not(input):not(select)').forEach((x) => { if (!x.hasAttribute('tabindex')) x.setAttribute('tabindex', '0'); });
+  if (!el.contains(document.activeElement)) { const f = el.querySelector('[data-act]'); if (f && f.focus) f.focus(); }
+}
+if (typeof MutationObserver !== 'undefined' && document.querySelector) {
+  const ob = new MutationObserver(ovSync);
+  ['#player', '#info'].forEach((q) => { const e = document.querySelector(q); if (e) ob.observe(e, { attributes: true, attributeFilter: ['class'] }); });
+}
+const _setInfo = setInfo;
+setInfo = function (h) { _setInfo(h); if (tvOn()) { tvPrepInfo(); ovSync(); } };
 function closePlayerUi() { const p = $('#player'); if (p) p.classList.add('hidden'); }
 
 document.addEventListener('keydown', (e) => {
