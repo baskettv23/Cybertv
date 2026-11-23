@@ -73,3 +73,6 @@ Las secciones guardan su resultado en memoria (abrir Canales, Películas y Serie
 
 ## 📡 Pasar listas a otro aparato
 Ajustes → Pasar listas: en la TV toca "Recibir" (muestra un PIN) y en la tablet toca "Enviar a otro aparato", elige la TV y escribe el PIN. Va por el Wi‑Fi local; se envían los enlaces de las listas (y, si quieres, las claves de TMDB/OMDb/Debrid) y la TV las descarga.
+
+## 🎞️ Elegir calidad
+En la ficha de cada película, "Ver / elegir calidad" muestra todas las versiones que tienes en tus listas (4K, 1080p, 720p…), de mejor a menor, con etiquetas de idioma y HDR, y el botón ⚡ para ver si ya la tienes en Real‑Debrid o TorBox.
