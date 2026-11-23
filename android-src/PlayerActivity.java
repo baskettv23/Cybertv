@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.app.PictureInPictureParams;
 import android.content.SharedPreferences;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
@@ -73,7 +75,10 @@ public class PlayerActivity extends Activity {
         if (q != null) queue = q;
         if (qt != null) queueTitles = qt;
 
+        // Fondo negro: sin esto las franjas de arriba y abajo de las películas anchas salían grises
+        getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));
         view = new PlayerView(this);
+        view.setBackgroundColor(Color.BLACK);
         view.setShowSubtitleButton(true);
         setContentView(view);
         hideSystemUi();
